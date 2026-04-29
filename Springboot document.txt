@@ -1,0 +1,301 @@
+NESTFIND - FULL SPRING BOOT BACKEND SCHEMA (PRODUCTION READY - WITH AUTH + JWT)
+===============================================================================
+
+This document defines the complete PostgreSQL schema for the NestFind platform.
+It includes:
+- PK / FK relationships
+- JWT Authentication with Refresh Tokens
+- Admin traceability
+- Worker visibility control
+- Business logic rules
+
+-------------------------------------------------------------------------------
+1. USERS (IDENTITY TABLE)
+-------------------------------------------------------------------------------
+PK: id (UUID)
+
+Fields:
+- id (UUID, PK)
+- username (VARCHAR, UNIQUE)
+- email (VARCHAR, UNIQUE)
+- role (ENUM: WORKER, CLIENT, ADMIN)
+- created_at (TIMESTAMP)
+
+Relationships:
+- 1:1 → auth
+- 1:1 → worker_profiles
+- 1:1 → client_profiles
+- 1:N → refresh_tokens
+- 1:N → notifications
+- 1:N → messages
+- 1:N → admin_logs
+
+Purpose:
+- Stores identity only
+- Used for authorization
+
+
+-------------------------------------------------------------------------------
+2. AUTH (SECURITY TABLE)
+-------------------------------------------------------------------------------
+PK: id (UUID)
+FK: user_id → users.id
+
+Fields:
+- id (UUID, PK)
+- user_id (UUID, UNIQUE FK)
+- password_hash (VARCHAR)  -- BCrypt
+- last_login (TIMESTAMP)
+- is_active (BOOLEAN DEFAULT TRUE)
+- created_at (TIMESTAMP)
+
+Purpose:
+- Stores hashed passwords only
+
+
+-------------------------------------------------------------------------------
+3. REFRESH_TOKENS (JWT SYSTEM 🔐)
+-------------------------------------------------------------------------------
+PK: id (UUID)
+FK: user_id → users.id
+
+Fields:
+- id (UUID, PK)
+- user_id (UUID, FK)
+- token (TEXT)  -- refresh token
+- expiry_date (TIMESTAMP)
+- is_revoked (BOOLEAN DEFAULT FALSE)
+- created_at (TIMESTAMP)
+
+Relationships:
+- N:1 → users
+
+Purpose:
+- Enables JWT refresh flow
+- Supports logout, session invalidation
+
+
+-------------------------------------------------------------------------------
+4. WORKER_PROFILES
+-------------------------------------------------------------------------------
+PK: id (UUID)
+
+FK:
+- user_id → users.id
+- approved_by → users.id (ADMIN)
+- rejected_by → users.id (ADMIN)
+
+Fields:
+- id (UUID, PK)
+- user_id (UUID, UNIQUE FK)
+- full_name
+- phone_number
+- experience_years
+- location
+- bio
+
+-- CORE STATUS SYSTEM
+- status (PENDING, APPROVED, REJECTED)
+
+-- VISIBILITY CONTROL (IMPORTANT)
+- is_visible (BOOLEAN DEFAULT FALSE)
+
+-- TRACKING
+- rejection_reason
+- is_online (BOOLEAN)
+- last_seen (TIMESTAMP)
+
+-- ADMIN TRACEABILITY
+- approved_by (UUID)
+- approved_at (TIMESTAMP)
+- rejected_by (UUID)
+- rejected_at (TIMESTAMP)
+
+- created_at
+
+Relationships:
+- 1:1 → users
+- 1:N → documents
+- 1:N → job_requests
+- 1:N → reviews
+- N:M → skills
+
+Purpose:
+- Stores worker data
+- Controls marketplace visibility
+
+BUSINESS RULE:
+- When created → status = PENDING, is_visible = FALSE
+- When admin approves → status = APPROVED, is_visible = TRUE
+- When rejected → status = REJECTED, is_visible = FALSE
+
+
+-------------------------------------------------------------------------------
+5. CLIENT_PROFILES
+-------------------------------------------------------------------------------
+PK: id (UUID)
+FK: user_id → users.id
+
+Fields:
+- id
+- user_id
+- full_name
+- phone_number
+- created_at
+
+
+-------------------------------------------------------------------------------
+6. DOCUMENTS
+-------------------------------------------------------------------------------
+PK: id (UUID)
+
+FK:
+- worker_id → worker_profiles.id
+- verified_by → users.id (ADMIN)
+
+Fields:
+- id
+- worker_id
+- document_type
+- document_url
+- verified_by
+- verified_at
+- uploaded_at
+
+
+-------------------------------------------------------------------------------
+7. JOB_REQUESTS
+-------------------------------------------------------------------------------
+PK: id (UUID)
+
+FK:
+- client_id → users.id
+- worker_id → worker_profiles.id
+- handled_by → users.id (ADMIN)
+
+Fields:
+- id
+- client_id
+- worker_id
+- description
+- status (PENDING, ACCEPTED, REJECTED, COMPLETED)
+- handled_by
+- created_at
+
+
+-------------------------------------------------------------------------------
+8. REVIEWS
+-------------------------------------------------------------------------------
+PK: id (UUID)
+
+FK:
+- client_id → users.id
+- worker_id → worker_profiles.id
+
+Fields:
+- id
+- client_id
+- worker_id
+- rating (1–5)
+- comment
+- created_at
+
+
+-------------------------------------------------------------------------------
+9. ADMIN_LOGS
+-------------------------------------------------------------------------------
+PK: id (UUID)
+FK: admin_id → users.id
+
+Fields:
+- id
+- admin_id
+- action
+- target_id
+- created_at
+
+
+-------------------------------------------------------------------------------
+10. NOTIFICATIONS
+-------------------------------------------------------------------------------
+PK: id (UUID)
+FK: user_id → users.id
+
+Fields:
+- id
+- user_id
+- title
+- message
+- type
+- is_read
+- created_at
+
+
+-------------------------------------------------------------------------------
+11. MESSAGES
+-------------------------------------------------------------------------------
+PK: id (UUID)
+
+FK:
+- sender_id → users.id
+- receiver_id → users.id
+
+Fields:
+- id
+- sender_id
+- receiver_id
+- content
+- attachment_url
+- sent_at
+- is_read
+
+
+-------------------------------------------------------------------------------
+12. SKILLS
+-------------------------------------------------------------------------------
+PK: id (INT)
+
+Fields:
+- id
+- name (UNIQUE)
+
+
+-------------------------------------------------------------------------------
+13. WORKER_SKILLS
+-------------------------------------------------------------------------------
+PK: (worker_id, skill_id)
+
+FK:
+- worker_id → worker_profiles.id
+- skill_id → skills.id
+
+
+-------------------------------------------------------------------------------
+FINAL RELATIONSHIP SUMMARY
+-------------------------------------------------------------------------------
+
+USERS
+ ├── AUTH (1:1)
+ ├── REFRESH_TOKENS (1:N)
+ ├── WORKER_PROFILES (1:1)
+ │     ├── DOCUMENTS (1:N)
+ │     ├── JOB_REQUESTS (1:N)
+ │     ├── REVIEWS (1:N)
+ │     └── WORKER_SKILLS (N:M)
+ │
+ ├── CLIENT_PROFILES (1:1)
+ │     ├── JOB_REQUESTS (1:N)
+ │     └── REVIEWS (1:N)
+ │
+ ├── MESSAGES (1:N)
+ ├── NOTIFICATIONS (1:N)
+ └── ADMIN_LOGS (1:N)
+
+ADMIN
+ ├── approves → WORKER_PROFILES
+ ├── verifies → DOCUMENTS
+ ├── handles → JOB_REQUESTS
+ └── logs → ADMIN_LOGS
+
+-------------------------------------------------------------------------------
+END OF FILE
