@@ -63,15 +63,15 @@ public class WorkerProfile {
     private Set<String> preferredLocations;
 
     @Builder.Default
-    @OneToMany(mappedBy = "worker", cascade = CascadeType.ALL)
+    @OneToMany(mappedBy = "worker", cascade = CascadeType.ALL, orphanRemoval = true)
     private java.util.Set<WorkHistory> workHistory = new java.util.HashSet<>();
 
     @Builder.Default
-    @OneToMany(mappedBy = "worker", cascade = CascadeType.ALL)
+    @OneToMany(mappedBy = "worker", cascade = CascadeType.ALL, orphanRemoval = true)
     private java.util.Set<Certification> certifications = new java.util.HashSet<>();
 
     @Builder.Default
-    @OneToMany(mappedBy = "worker", cascade = CascadeType.ALL)
+    @OneToMany(mappedBy = "worker", cascade = CascadeType.ALL, orphanRemoval = true)
     private java.util.Set<Document> documents = new java.util.HashSet<>();
 
     @OneToMany(mappedBy = "worker", cascade = CascadeType.ALL, orphanRemoval = true)

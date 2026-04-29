@@ -18,7 +18,6 @@ public class WorkerController {
     private final SkillRepository skillRepository;
     private final WorkHistoryRepository workHistoryRepository;
     private final CertificationRepository certificationRepository;
-    private final DocumentRepository documentRepository;
     private final com.nestfind.backend.core.services.CloudinaryService cloudinaryService;
 
     // CREATE: Submit a new worker profile (updates existing if already present)
@@ -92,41 +91,42 @@ public class WorkerController {
         profileToSave.setStatus(WorkerStatus.PENDING);
         profileToSave.setVisible(false);
 
-        // Save profile first
-        WorkerProfile saved = workerProfileRepository.save(profileToSave);
-
         // Handle Work History
         if (updates.workHistory() != null) {
-            workHistoryRepository.deleteByWorkerId(saved.getId());
-            saved.getWorkHistory().clear();
+            workHistoryRepository.deleteByWorkerId(profileToSave.getId());
+            workHistoryRepository.flush();
+            profileToSave.getWorkHistory().clear();
             updates.workHistory().forEach(dto -> {
                 WorkHistory wh = WorkHistory.builder()
-                    .worker(saved)
+                    .worker(profileToSave)
                     .company(dto.company())
                     .role(dto.role())
                     .period(dto.period())
                     .description(dto.description())
                     .build();
                 workHistoryRepository.save(wh);
-                saved.getWorkHistory().add(wh);
+                profileToSave.getWorkHistory().add(wh);
             });
         }
 
         // Handle Certifications
         if (updates.certifications() != null) {
-            certificationRepository.deleteByWorkerId(saved.getId());
-            saved.getCertifications().clear();
+            certificationRepository.deleteByWorkerId(profileToSave.getId());
+            certificationRepository.flush();
+            profileToSave.getCertifications().clear();
             updates.certifications().forEach(dto -> {
                 Certification cert = Certification.builder()
-                    .worker(saved)
+                    .worker(profileToSave)
                     .name(dto.name())
                     .issuer(dto.issuer())
                     .year(dto.year())
                     .build();
                 certificationRepository.save(cert);
-                saved.getCertifications().add(cert);
+                profileToSave.getCertifications().add(cert);
             });
         }
+
+        WorkerProfile saved = workerProfileRepository.saveAndFlush(profileToSave);
 
         return ResponseEntity.ok(new ProfileUpdateResponse(
             "Profile updated successfully", 
