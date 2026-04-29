@@ -25,29 +25,39 @@ public class WorkerController {
     @PostMapping("/profile")
     @PreAuthorize("hasRole('WORKER')")
     @org.springframework.transaction.annotation.Transactional
-    public ResponseEntity<?> createProfile(@RequestBody WorkerProfile updates, @RequestParam String email) {
+    public ResponseEntity<?> createProfile(@RequestBody WorkerProfileUpdateRequest updates, @RequestParam String email) {
+        System.out.println("Processing CREATE request for email: " + email);
         var existingOpt = workerProfileRepository.findByUserEmail(email);
         WorkerProfile profileToSave;
 
         if (existingOpt.isPresent()) {
             profileToSave = existingOpt.get();
             // Merge basic fields
-            if (updates.getFullName() != null) profileToSave.setFullName(updates.getFullName());
-            if (updates.getPhoneNumber() != null) profileToSave.setPhoneNumber(updates.getPhoneNumber());
-            if (updates.getBio() != null) profileToSave.setBio(updates.getBio());
-            if (updates.getLocation() != null) profileToSave.setLocation(updates.getLocation());
-            if (updates.getExperienceYears() != null) profileToSave.setExperienceYears(updates.getExperienceYears());
-            if (updates.getHourlyRate() != null) profileToSave.setHourlyRate(updates.getHourlyRate());
-            if (updates.getCategory() != null) profileToSave.setCategory(updates.getCategory());
-            if (updates.getProfilePictureUrl() != null) profileToSave.setProfilePictureUrl(updates.getProfilePictureUrl());
-            if (updates.getAvailabilityDetails() != null) profileToSave.setAvailabilityDetails(updates.getAvailabilityDetails());
+            if (updates.fullName() != null) profileToSave.setFullName(updates.fullName());
+            if (updates.phoneNumber() != null) profileToSave.setPhoneNumber(updates.phoneNumber());
+            if (updates.bio() != null) profileToSave.setBio(updates.bio());
+            if (updates.location() != null) profileToSave.setLocation(updates.location());
+            if (updates.experienceYears() != null) profileToSave.setExperienceYears(updates.experienceYears());
+            if (updates.hourlyRate() != null) profileToSave.setHourlyRate(updates.hourlyRate());
+            if (updates.category() != null) profileToSave.setCategory(updates.category());
+            if (updates.profilePictureUrl() != null) profileToSave.setProfilePictureUrl(updates.profilePictureUrl());
+            if (updates.availabilityDetails() != null) profileToSave.setAvailabilityDetails(updates.availabilityDetails());
         } else {
             var user = userRepository.findByEmail(email).orElse(null);
             if (user == null) {
                 return ResponseEntity.badRequest().body("Error: User not found for email: " + email);
             }
-            profileToSave = updates;
+            profileToSave = new WorkerProfile();
             profileToSave.setUser(user);
+            profileToSave.setFullName(updates.fullName());
+            profileToSave.setPhoneNumber(updates.phoneNumber());
+            profileToSave.setBio(updates.bio());
+            profileToSave.setLocation(updates.location());
+            profileToSave.setExperienceYears(updates.experienceYears());
+            profileToSave.setHourlyRate(updates.hourlyRate());
+            profileToSave.setCategory(updates.category());
+            profileToSave.setProfilePictureUrl(updates.profilePictureUrl());
+            profileToSave.setAvailabilityDetails(updates.availabilityDetails());
             
             // Seed default placeholder documents for new API-created profiles
             Document idCard = new Document();
@@ -66,16 +76,16 @@ public class WorkerController {
         }
 
         // Handle Skills
-        if (updates.getSkills() != null) {
-            java.util.Set<Skill> managedSkills = updates.getSkills().stream()
-                .map(s -> skillRepository.findByName(s.getName())
-                    .orElseGet(() -> skillRepository.save(Skill.builder().name(s.getName()).build())))
+        if (updates.skills() != null) {
+            java.util.Set<Skill> managedSkills = updates.skills().stream()
+                .map(name -> skillRepository.findByName(name)
+                    .orElseGet(() -> skillRepository.save(Skill.builder().name(name).build())))
                 .collect(java.util.stream.Collectors.toSet());
             profileToSave.setSkills(managedSkills);
         }
 
-        if (updates.getPreferredLocations() != null) {
-            profileToSave.setPreferredLocations(updates.getPreferredLocations());
+        if (updates.preferredLocations() != null) {
+            profileToSave.setPreferredLocations(updates.preferredLocations());
         }
 
         // Reset status for re-verification
@@ -85,41 +95,38 @@ public class WorkerController {
         // Save profile first
         WorkerProfile saved = workerProfileRepository.save(profileToSave);
 
-        // Handle Work History (Clear old, add new with back-reference)
-        if (updates.getWorkHistory() != null && updates.getWorkHistory() != saved.getWorkHistory()) {
+        // Handle Work History
+        if (updates.workHistory() != null) {
             workHistoryRepository.deleteByWorkerId(saved.getId());
             saved.getWorkHistory().clear();
-            updates.getWorkHistory().forEach(h -> {
-                h.setWorker(saved);
-                WorkHistory savedH = workHistoryRepository.save(h);
-                saved.getWorkHistory().add(savedH);
+            updates.workHistory().forEach(dto -> {
+                WorkHistory wh = WorkHistory.builder()
+                    .worker(saved)
+                    .company(dto.company())
+                    .role(dto.role())
+                    .period(dto.period())
+                    .description(dto.description())
+                    .build();
+                workHistoryRepository.save(wh);
+                saved.getWorkHistory().add(wh);
             });
         }
 
-        // Handle Certifications (Clear old, add new with back-reference)
-        if (updates.getCertifications() != null && updates.getCertifications() != saved.getCertifications()) {
+        // Handle Certifications
+        if (updates.certifications() != null) {
             certificationRepository.deleteByWorkerId(saved.getId());
             saved.getCertifications().clear();
-            updates.getCertifications().forEach(c -> {
-                c.setWorker(saved);
-                Certification savedC = certificationRepository.save(c);
-                saved.getCertifications().add(savedC);
+            updates.certifications().forEach(dto -> {
+                Certification cert = Certification.builder()
+                    .worker(saved)
+                    .name(dto.name())
+                    .issuer(dto.issuer())
+                    .year(dto.year())
+                    .build();
+                certificationRepository.save(cert);
+                saved.getCertifications().add(cert);
             });
         }
-
-        // Handle Documents (Clear old, add new with back-reference)
-        if (updates.getDocuments() != null && updates.getDocuments() != saved.getDocuments()) {
-            documentRepository.deleteByWorkerId(saved.getId());
-            saved.getDocuments().clear();
-            updates.getDocuments().forEach(d -> {
-                d.setWorker(saved);
-                Document savedD = documentRepository.save(d);
-                saved.getDocuments().add(savedD);
-            });
-        }
-
-        // Flush changes to database
-        workerProfileRepository.flush();
 
         return ResponseEntity.ok(new ProfileUpdateResponse(
             "Profile updated successfully", 
@@ -141,6 +148,7 @@ public class WorkerController {
     @PutMapping("/profile/{profileId}")
     @PreAuthorize("hasRole('WORKER')")
     public ResponseEntity<?> updateProfile(@PathVariable UUID profileId, @RequestBody WorkerProfileUpdateRequest updates) {
+        System.out.println("Processing UPDATE request for profileId: " + profileId);
         return workerProfileRepository.findById(profileId).map(existing -> {
             if (updates.fullName() != null) existing.setFullName(updates.fullName());
             if (updates.phoneNumber() != null) existing.setPhoneNumber(updates.phoneNumber());
@@ -154,8 +162,8 @@ public class WorkerController {
             
             if (updates.skills() != null) {
                 java.util.Set<Skill> managedSkills = updates.skills().stream()
-                    .map(s -> skillRepository.findByName(s.name())
-                        .orElseGet(() -> skillRepository.save(Skill.builder().name(s.name()).build())))
+                    .map(skillName -> skillRepository.findByName(skillName)
+                        .orElseGet(() -> skillRepository.save(Skill.builder().name(skillName).build())))
                     .collect(java.util.stream.Collectors.toSet());
                 existing.setSkills(managedSkills);
             }
@@ -249,11 +257,9 @@ record WorkerProfileUpdateRequest(
     String location,
     String bio,
     java.util.Set<String> preferredLocations,
-    java.util.Set<SkillRequest> skills,
+    java.util.Set<String> skills,
     String profilePictureUrl,
     Availability availabilityDetails,
     java.util.List<WorkHistoryDTO> workHistory,
     java.util.List<CertificationDTO> certifications
 ) {}
-
-record SkillRequest(String name) {}
