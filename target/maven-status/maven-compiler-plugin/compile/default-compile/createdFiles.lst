@@ -4,6 +4,7 @@ com\nestfind\backend\features\worker\JobRequest.class
 com\nestfind\backend\core\config\OpenApiConfig.class
 com\nestfind\backend\features\worker\Skill.class
 com\nestfind\backend\features\auth\UserRepository.class
+com\nestfind\backend\features\worker\Availability$AvailabilityBuilder.class
 com\nestfind\backend\features\common\Notification$NotificationBuilder.class
 com\nestfind\backend\features\worker\WorkerStatus.class
 com\nestfind\backend\features\worker\CertificationRepository.class
@@ -41,6 +42,7 @@ com\nestfind\backend\core\services\CloudinaryService.class
 com\nestfind\backend\core\security\SecurityConfig.class
 com\nestfind\backend\features\auth\RefreshTokenRepository.class
 com\nestfind\backend\features\common\Notification.class
+com\nestfind\backend\features\worker\WorkerProfileUpdateRequest.class
 com\nestfind\backend\features\worker\ReviewController.class
 com\nestfind\backend\features\worker\WorkerController.class
 com\nestfind\backend\core\config\CloudinaryConfig.class
@@ -49,6 +51,7 @@ com\nestfind\backend\features\worker\Review$ReviewBuilder.class
 com\nestfind\backend\features\auth\AuthResponse.class
 com\nestfind\backend\features\auth\Auth$AuthBuilder.class
 com\nestfind\backend\features\worker\DocumentDTO.class
+com\nestfind\backend\features\worker\Availability.class
 com\nestfind\backend\features\auth\User$UserBuilder.class
 com\nestfind\backend\features\admin\AdminController.class
 com\nestfind\backend\features\client\ClientController.class
@@ -66,6 +69,7 @@ com\nestfind\backend\features\auth\AuthRepository.class
 com\nestfind\backend\features\auth\AuthService.class
 com\nestfind\backend\features\common\MessageRepository.class
 com\nestfind\backend\features\client\ClientProfile.class
+com\nestfind\backend\features\worker\ProfileUpdateResponse.class
 com\nestfind\backend\features\worker\JobRequestController.class
 com\nestfind\backend\features\common\MessageDTO.class
 com\nestfind\backend\core\config\RouteViewer.class

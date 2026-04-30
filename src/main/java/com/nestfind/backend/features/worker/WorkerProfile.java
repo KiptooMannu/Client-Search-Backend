@@ -55,7 +55,7 @@ public class WorkerProfile {
 
     @Builder.Default
     @Enumerated(EnumType.STRING)
-    private WorkerStatus status = WorkerStatus.PENDING;
+    private WorkerStatus status = WorkerStatus.DRAFT;
 
     @ElementCollection
     @CollectionTable(name = "worker_locations", joinColumns = @JoinColumn(name = "worker_id"))

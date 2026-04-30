@@ -58,20 +58,7 @@ public class WorkerController {
             profileToSave.setProfilePictureUrl(updates.profilePictureUrl());
             profileToSave.setAvailabilityDetails(updates.availabilityDetails());
             
-            // Seed default placeholder documents for new API-created profiles
-            Document idCard = new Document();
-            idCard.setWorker(profileToSave);
-            idCard.setName("National_ID");
-            idCard.setType("ID_CARD");
-            idCard.setDocumentUrl("https://res.cloudinary.com/demo/image/upload/sample_id.jpg");
-            profileToSave.getDocuments().add(idCard);
-
-            Document cert = new Document();
-            cert.setWorker(profileToSave);
-            cert.setName("Technical_Certificate");
-            cert.setType("CERTIFICATE");
-            cert.setDocumentUrl("https://res.cloudinary.com/demo/image/upload/sample_cert.jpg");
-            profileToSave.getDocuments().add(cert);
+            // Removed default placeholder document seeding to allow for real worker uploads
         }
 
         // Handle Skills
@@ -87,8 +74,10 @@ public class WorkerController {
             profileToSave.setPreferredLocations(updates.preferredLocations());
         }
 
-        // Reset status for re-verification
-        profileToSave.setStatus(WorkerStatus.PENDING);
+        // New profiles start in DRAFT status
+        if (profileToSave.getStatus() == null) {
+            profileToSave.setStatus(WorkerStatus.DRAFT);
+        }
         profileToSave.setVisible(false);
 
         // Handle Work History
@@ -199,9 +188,12 @@ public class WorkerController {
                 }
             }
 
-            // Editing a profile resets it to PENDING for re-review
-            existing.setStatus(WorkerStatus.PENDING);
-            existing.setVisible(false);
+            // If profile was already approved, editing it resets it to PENDING for re-review
+            // If it was DRAFT or REJECTED, it stays in that state until explicitly submitted
+            if (existing.getStatus() == WorkerStatus.APPROVED) {
+                existing.setStatus(WorkerStatus.PENDING);
+                existing.setVisible(false);
+            }
             return ResponseEntity.ok(WorkerProfileDTO.from(workerProfileRepository.save(existing)));
         }).orElse(ResponseEntity.notFound().build());
     }

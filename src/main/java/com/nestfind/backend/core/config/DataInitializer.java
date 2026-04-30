@@ -22,11 +22,20 @@ public class DataInitializer implements CommandLineRunner {
     private final AuthRepository authRepository;
     private final ClientProfileRepository clientProfileRepository;
     private final PasswordEncoder passwordEncoder;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     private static final String PASS = "password123";
 
     @Override
     public void run(String... args) throws Exception {
+        // Drop the legacy check constraint if it exists to allow the DRAFT status
+        try {
+            jdbcTemplate.execute("ALTER TABLE worker_profiles DROP CONSTRAINT IF EXISTS worker_profiles_status_check");
+            log.info("Successfully dropped legacy worker_profiles_status_check constraint.");
+        } catch (Exception e) {
+            log.warn("Could not drop constraint (it might already be gone): {}", e.getMessage());
+        }
+
         if (userRepository.existsByEmail("admin@nestfind.com")) {
             log.info("Database already seeded. Skipping initialization.");
             return;

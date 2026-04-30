@@ -60,7 +60,7 @@ public class AuthService {
             WorkerProfile workerProfile = WorkerProfile.builder()
                     .user(user)
                     .fullName(fullName)
-                    .status(WorkerStatus.PENDING)
+                    .status(WorkerStatus.DRAFT)
                     .isVisible(false)
                     .isOnline(false)
                     .build();
