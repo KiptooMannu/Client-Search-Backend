@@ -17,7 +17,10 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@Table(name = "worker_profiles")
+@Table(name = "worker_profiles", indexes = {
+    @Index(name = "idx_worker_status", columnList = "status"),
+    @Index(name = "idx_worker_is_visible", columnList = "is_visible")
+})
 @com.fasterxml.jackson.annotation.JsonIdentityInfo(
     generator = com.fasterxml.jackson.annotation.ObjectIdGenerators.PropertyGenerator.class,
     property = "id")
@@ -62,14 +65,17 @@ public class WorkerProfile {
     @Column(name = "location_name")
     private Set<String> preferredLocations;
 
+    @org.hibernate.annotations.BatchSize(size = 20)
     @Builder.Default
     @OneToMany(mappedBy = "worker", cascade = CascadeType.ALL, orphanRemoval = true)
     private java.util.Set<WorkHistory> workHistory = new java.util.HashSet<>();
 
+    @org.hibernate.annotations.BatchSize(size = 20)
     @Builder.Default
     @OneToMany(mappedBy = "worker", cascade = CascadeType.ALL, orphanRemoval = true)
     private java.util.Set<Certification> certifications = new java.util.HashSet<>();
 
+    @org.hibernate.annotations.BatchSize(size = 20)
     @Builder.Default
     @OneToMany(mappedBy = "worker", cascade = CascadeType.ALL, orphanRemoval = true)
     private java.util.Set<Document> documents = new java.util.HashSet<>();
@@ -112,8 +118,9 @@ public class WorkerProfile {
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
+    @org.hibernate.annotations.BatchSize(size = 20)
     @Builder.Default
-    @ManyToMany(fetch = FetchType.EAGER)
+    @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
         name = "worker_skills",
         joinColumns = @JoinColumn(name = "worker_id"),

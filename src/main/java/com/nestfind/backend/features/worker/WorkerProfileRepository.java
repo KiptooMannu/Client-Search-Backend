@@ -29,21 +29,13 @@ public interface WorkerProfileRepository extends JpaRepository<WorkerProfile, UU
 
     // Fetch by status with all collections eagerly to avoid N+1
     @Query("SELECT DISTINCT w FROM WorkerProfile w " +
-           "LEFT JOIN FETCH w.user u " +
-           "LEFT JOIN FETCH w.skills " +
-           "LEFT JOIN FETCH w.workHistory " +
-           "LEFT JOIN FETCH w.certifications " +
-           "LEFT JOIN FETCH w.documents " +
+           "LEFT JOIN FETCH w.user " +
            "WHERE w.status = :status")
     List<WorkerProfile> findAllByStatusWithDetails(@Param("status") WorkerStatus status);
 
     // Fetch all with collections to avoid N+1
     @Query("SELECT DISTINCT w FROM WorkerProfile w " +
-           "LEFT JOIN FETCH w.user u " +
-           "LEFT JOIN FETCH w.skills " +
-           "LEFT JOIN FETCH w.workHistory " +
-           "LEFT JOIN FETCH w.certifications " +
-           "LEFT JOIN FETCH w.documents")
+           "LEFT JOIN FETCH w.user")
     List<WorkerProfile> findAllWithDetails();
 
     List<WorkerProfile> findAllByStatus(WorkerStatus status);
