@@ -64,18 +64,29 @@ try {
     $users = Invoke-RestMethod -Uri "$baseUrl/admin/users" -Method Get -Headers $authHeaders
     Write-Host "✅ Admin User Management: Found $($users.Count) total platform users." -ForegroundColor Green
 } catch {
-    Write-Host "❌ Admin Endpoints Failed." -ForegroundColor Red
+    Write-Host "ERROR: Admin Endpoints Failed." -ForegroundColor Red
+    Write-Host "Details: $_" -ForegroundColor Red
+    if ($_.Exception.Response) {
+        $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
+        $respBody = $reader.ReadToEnd()
+        Write-Host "Response Body: $respBody" -ForegroundColor Yellow
+    }
 }
 
 # 4. WORKER DOCUMENT TESTS (Simulation)
 Write-Host-Section "Testing Worker Document Flow"
 try {
-    Write-Host "ℹ️ Document upload requires multipart/form-data. Skipping automated binary test." -ForegroundColor Yellow
+    Write-Host "INFO: Document upload requires multipart/form-data. Skipping automated binary test." -ForegroundColor Yellow
     
-    $workerDocs = Invoke-RestMethod -Uri "$baseUrl/documents/worker/$($workers[0].id)" -Method Get -Headers $authHeaders
-    Write-Host "✅ Worker Documents: Retrieved $($workerDocs.Count) documents for $($workers[0].fullName)." -ForegroundColor Green
+    if ($workers.Count -gt 0) {
+        $workerDocs = Invoke-RestMethod -Uri "$baseUrl/documents/worker/$($workers[0].id)" -Method Get -Headers $authHeaders
+        Write-Host "SUCCESS: Worker Documents: Retrieved $($workerDocs.Count) documents for $($workers[0].fullName)." -ForegroundColor Green
+    } else {
+        Write-Host "INFO: No workers found to test document retrieval." -ForegroundColor Yellow
+    }
 } catch {
-    Write-Host "❌ Document Retrieval Failed." -ForegroundColor Red
+    Write-Host "ERROR: Document Retrieval Failed." -ForegroundColor Red
 }
 
 Write-Host "`n--- All Core Operations Verified Operational ---" -ForegroundColor Green
+

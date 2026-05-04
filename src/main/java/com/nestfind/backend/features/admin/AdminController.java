@@ -1,6 +1,7 @@
 package com.nestfind.backend.features.admin;
 
 import com.nestfind.backend.features.auth.UserRepository;
+import com.nestfind.backend.features.auth.AuthRepository;
 import com.nestfind.backend.features.client.ClientProfile;
 import com.nestfind.backend.features.client.ClientProfileDTO;
 import com.nestfind.backend.features.client.ClientProfileRepository;
@@ -25,7 +26,9 @@ public class AdminController {
 
     private final WorkerProfileRepository workerProfileRepository;
     private final UserRepository userRepository;
-    private final ClientProfileRepository clientProfileRepository; // <-- added
+    private final AuthRepository authRepository;
+    private final ClientProfileRepository clientProfileRepository;
+    private final AdminLogRepository adminLogRepository;
 
     // ==================== WORKER MANAGEMENT ====================
 
@@ -70,7 +73,18 @@ public class AdminController {
         worker.setRejectionReason(null);
 
         workerProfileRepository.save(worker);
-        return ResponseEntity.ok("Worker verified and is now live!");
+
+        // Log the action for audit
+        adminLogRepository.save(AdminLog.builder()
+                .adminId(adminId)
+                .action("APPROVE_WORKER")
+                .targetId(id)
+                .build());
+
+        return ResponseEntity.ok(java.util.Map.of(
+            "message", "Worker " + worker.getFullName() + " verified and is now live!",
+            "status", "APPROVED"
+        ));
     }
 
     @PutMapping("/workers/{id}/reject")
@@ -87,7 +101,18 @@ public class AdminController {
         worker.setRejectionReason(reason);
 
         workerProfileRepository.save(worker);
-        return ResponseEntity.ok("Worker rejected. Reason: " + reason);
+
+        // Log the action for audit
+        adminLogRepository.save(AdminLog.builder()
+                .adminId(adminId)
+                .action("REJECT_WORKER")
+                .targetId(id)
+                .build());
+
+        return ResponseEntity.ok(java.util.Map.of(
+            "message", "Worker rejected. Reason: " + reason,
+            "status", "REJECTED"
+        ));
     }
 
     @DeleteMapping("/workers/{id}")
@@ -152,11 +177,13 @@ public class AdminController {
     public List<java.util.Map<String, Object>> getAllUsers() {
         return userRepository.findAll().stream().map(u -> {
             java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+            boolean isActive = authRepository.findByUserId(u.getId()).map(a -> a.isActive()).orElse(true);
             m.put("id", u.getId());
             m.put("username", u.getUsername());
             m.put("email", u.getEmail());
             m.put("fullName", u.getFullName());
             m.put("role", u.getRole());
+            m.put("active", isActive);
             m.put("createdAt", u.getCreatedAt());
             return m;
         }).toList();
@@ -178,5 +205,63 @@ public class AdminController {
         }
         userRepository.deleteById(id);
         return ResponseEntity.ok("User deleted successfully.");
+    }
+
+    @PutMapping("/users/{id}/suspend")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> suspendUser(@PathVariable UUID id) {
+        if (!userRepository.existsById(id)) {
+            return ResponseEntity.notFound().build();
+        }
+        var auth = authRepository.findByUserId(id).orElse(null);
+        if (auth == null) {
+            return ResponseEntity.badRequest().body("Auth record not found.");
+        }
+        auth.setActive(false);
+        authRepository.save(auth);
+        return ResponseEntity.ok("User suspended successfully.");
+    }
+
+    @PutMapping("/users/{id}/activate")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> activateUser(@PathVariable UUID id) {
+        if (!userRepository.existsById(id)) {
+            return ResponseEntity.notFound().build();
+        }
+        var auth = authRepository.findByUserId(id).orElse(null);
+        if (auth == null) {
+            return ResponseEntity.badRequest().body("Auth record not found.");
+        }
+        auth.setActive(true);
+        authRepository.save(auth);
+        return ResponseEntity.ok("User activated successfully.");
+    }
+
+    @PutMapping("/users/{id}/name")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> updateUserName(@PathVariable UUID id, @RequestParam String fullName) {
+        return userRepository.findById(id).map(user -> {
+            user.setFullName(fullName);
+            userRepository.save(user);
+            return ResponseEntity.ok("User name updated.");
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    // ==================== ACTIVITY LOGS ====================
+
+    @GetMapping("/logs")
+    @PreAuthorize("hasRole('ADMIN')")
+    public List<java.util.Map<String, Object>> getAdminLogs() {
+        return adminLogRepository.findAll().stream()
+                .sorted(java.util.Comparator.comparing(AdminLog::getCreatedAt).reversed())
+                .map(log -> {
+                    java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+                    m.put("id", log.getId());
+                    m.put("adminId", log.getAdminId());
+                    m.put("action", log.getAction());
+                    m.put("targetId", log.getTargetId());
+                    m.put("createdAt", log.getCreatedAt());
+                    return m;
+                }).toList();
     }
 }

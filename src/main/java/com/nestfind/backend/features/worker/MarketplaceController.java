@@ -39,6 +39,9 @@ public class MarketplaceController {
     public WorkerProfileDTO getWorkerProfile(@PathVariable UUID profileId) {
         WorkerProfile profile = workerProfileRepository.findById(profileId)
                 .orElseThrow(() -> new RuntimeException("Worker not found"));
+        if (profile.getStatus() != WorkerStatus.APPROVED || !profile.isVisible()) {
+            throw new RuntimeException("Worker not available in marketplace");
+        }
         return WorkerProfileDTO.from(profile);
     }
 }

@@ -81,6 +81,10 @@ public class AuthService {
         Auth auth = authRepository.findByUserEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
+        if (!auth.isActive()) {
+            throw new RuntimeException("Account is suspended. Please contact support.");
+        }
+
         if (!passwordEncoder.matches(password, auth.getPasswordHash())) {
             throw new RuntimeException("Invalid password");
         }

@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import java.util.UUID;
+import java.security.Principal;
 
 @RestController
 @RequestMapping("/api/workers")
@@ -127,7 +128,14 @@ public class WorkerController {
     // READ: Get a single worker profile by userId
     @GetMapping("/profile/{userId}")
     @PreAuthorize("hasRole('WORKER') or hasRole('ADMIN')")
-    public ResponseEntity<?> getProfile(@PathVariable UUID userId) {
+    public ResponseEntity<?> getProfile(@PathVariable UUID userId, Principal principal) {
+        var actor = userRepository.findByUsername(principal.getName()).orElse(null);
+        if (actor == null) {
+            return ResponseEntity.status(401).body("Unauthorized");
+        }
+        if (actor.getRole() != com.nestfind.backend.features.auth.UserRole.ADMIN && !actor.getId().equals(userId)) {
+            return ResponseEntity.status(403).body("Forbidden: cannot access another worker profile.");
+        }
         return workerProfileRepository.findByUserId(userId)
                 .map(p -> ResponseEntity.ok(WorkerProfileDTO.from(p)))
                 .orElse(ResponseEntity.notFound().build());
@@ -136,9 +144,16 @@ public class WorkerController {
     // UPDATE: Worker edits their profile (resets to PENDING for re-verification)
     @PutMapping("/profile/{profileId}")
     @PreAuthorize("hasRole('WORKER')")
-    public ResponseEntity<?> updateProfile(@PathVariable UUID profileId, @RequestBody WorkerProfileUpdateRequest updates) {
+    public ResponseEntity<?> updateProfile(@PathVariable UUID profileId, @RequestBody WorkerProfileUpdateRequest updates, Principal principal) {
         System.out.println("Processing UPDATE request for profileId: " + profileId);
         return workerProfileRepository.findById(profileId).map(existing -> {
+            var actor = userRepository.findByUsername(principal.getName()).orElse(null);
+            if (actor == null) {
+                return ResponseEntity.status(401).body("Unauthorized");
+            }
+            if (existing.getUser() == null || !existing.getUser().getId().equals(actor.getId())) {
+                return ResponseEntity.status(403).body("Forbidden: cannot edit another worker profile.");
+            }
             if (updates.fullName() != null) existing.setFullName(updates.fullName());
             if (updates.phoneNumber() != null) existing.setPhoneNumber(updates.phoneNumber());
             if (updates.bio() != null) existing.setBio(updates.bio());
@@ -203,9 +218,17 @@ public class WorkerController {
     @PreAuthorize("hasRole('WORKER')")
     public ResponseEntity<?> uploadProfilePicture(
             @PathVariable UUID profileId,
-            @RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
+            @RequestParam("file") org.springframework.web.multipart.MultipartFile file,
+            Principal principal) {
         
         return workerProfileRepository.findById(profileId).map(existing -> {
+            var actor = userRepository.findByUsername(principal.getName()).orElse(null);
+            if (actor == null) {
+                return ResponseEntity.status(401).body("Unauthorized");
+            }
+            if (existing.getUser() == null || !existing.getUser().getId().equals(actor.getId())) {
+                return ResponseEntity.status(403).body("Forbidden: cannot edit another worker profile.");
+            }
             try {
                 java.util.Map<?, ?> uploadResult = cloudinaryService.upload(file, "nestfind/profiles/" + profileId);
                 String fileUrl = (String) uploadResult.get("secure_url");
@@ -220,8 +243,26 @@ public class WorkerController {
     // UPDATE: Explicitly submit for verification
     @PutMapping("/{profileId}/submit")
     @PreAuthorize("hasRole('WORKER')")
-    public ResponseEntity<?> submitForVerification(@PathVariable UUID profileId) {
+    public ResponseEntity<?> submitForVerification(@PathVariable UUID profileId, Principal principal) {
+        return submitForVerificationInternal(profileId, principal);
+    }
+
+    // Backward-compatible endpoint used by frontend routing style
+    @PutMapping("/profile/{profileId}/submit")
+    @PreAuthorize("hasRole('WORKER')")
+    public ResponseEntity<?> submitForVerificationFromProfileRoute(@PathVariable UUID profileId, Principal principal) {
+        return submitForVerificationInternal(profileId, principal);
+    }
+
+    private ResponseEntity<?> submitForVerificationInternal(UUID profileId, Principal principal) {
         return workerProfileRepository.findById(profileId).map(existing -> {
+            var actor = userRepository.findByUsername(principal.getName()).orElse(null);
+            if (actor == null) {
+                return ResponseEntity.status(401).body("Unauthorized");
+            }
+            if (existing.getUser() == null || !existing.getUser().getId().equals(actor.getId())) {
+                return ResponseEntity.status(403).body("Forbidden: cannot submit another worker profile.");
+            }
             existing.setStatus(WorkerStatus.PENDING);
             existing.setVisible(false);
             return ResponseEntity.ok(WorkerProfileDTO.from(workerProfileRepository.save(existing)));
@@ -231,12 +272,20 @@ public class WorkerController {
     // DELETE: Worker deletes their own profile
     @DeleteMapping("/profile/{profileId}")
     @PreAuthorize("hasRole('WORKER') or hasRole('ADMIN')")
-    public ResponseEntity<?> deleteProfile(@PathVariable UUID profileId) {
-        if (!workerProfileRepository.existsById(profileId)) {
-            return ResponseEntity.notFound().build();
+    public ResponseEntity<?> deleteProfile(@PathVariable UUID profileId, Principal principal) {
+        var actor = userRepository.findByUsername(principal.getName()).orElse(null);
+        if (actor == null) {
+            return ResponseEntity.status(401).body("Unauthorized");
         }
-        workerProfileRepository.deleteById(profileId);
-        return ResponseEntity.ok("Profile deleted successfully.");
+        return workerProfileRepository.findById(profileId).map(existing -> {
+            boolean admin = actor.getRole() == com.nestfind.backend.features.auth.UserRole.ADMIN;
+            boolean owner = existing.getUser() != null && existing.getUser().getId().equals(actor.getId());
+            if (!admin && !owner) {
+                return ResponseEntity.status(403).body("Forbidden: cannot delete another worker profile.");
+            }
+            workerProfileRepository.deleteById(profileId);
+            return ResponseEntity.ok("Profile deleted successfully.");
+        }).orElse(ResponseEntity.notFound().build());
     }
 }
 
