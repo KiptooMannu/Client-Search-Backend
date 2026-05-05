@@ -8,11 +8,11 @@
 		<version>3.4.5</version>
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
-	<groupId>com.nestfind</groupId>
+	<groupId>com.kazikonnect</groupId>
 	<artifactId>backend</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>nestfind-backend</name>
-	<description>Spring Boot Backend for NestFind Kenya</description>
+	<name>Kazi Konnect-backend</name>
+	<description>Spring Boot Backend for Kazi Konnect Kenya</description>
 	<properties>
 		<java.version>25</java.version>
 		<jjwt.version>0.12.5</jjwt.version>
@@ -112,7 +112,7 @@
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
 				<configuration>
-					<mainClass>com.nestfind.backend.BackendApplication</mainClass>
+					<mainClass>com.kazikonnect.backend.BackendApplication</mainClass>
 					<excludes>
 						<exclude>
 							<groupId>org.projectlombok</groupId>

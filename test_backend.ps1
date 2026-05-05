@@ -1,10 +1,10 @@
-# NESTFIND BACKEND TEST SUITE
+# Kazi Konnect BACKEND TEST SUITE
 # -------------------------
 
 # 1. ADMIN LOGIN
 $adminLogin = curl -X POST http://localhost:8080/api/auth/login `
     -H "Content-Type: application/json" `
-    -d '{"email": "admin@nestfind.com", "password": "admin123"}'
+    -d '{"email": "admin@kazikonnect.com", "password": "admin123"}'
 Write-Host "Admin Login Response: $adminLogin"
 
 # 2. WORKER LOGIN

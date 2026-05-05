@@ -41,7 +41,7 @@ $workerHeaders = @{ "Content-Type" = "application/json"; "Authorization" = "Bear
 
 # 1.2 Login Admin (Seeded)
 $adminAuth = Test-Endpoint "Login Admin" { 
-    $body = @{ email = "admin@nestfind.com"; password = "admin123" } | ConvertTo-Json
+    $body = @{ email = "admin@kazikonnect.com"; password = "admin123" } | ConvertTo-Json
     Invoke-RestMethod -Uri "$baseUrl/auth/login" -Method Post -Body $body -Headers $headers 
 }
 $adminToken = $adminAuth.accessToken

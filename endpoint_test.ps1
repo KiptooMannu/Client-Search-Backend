@@ -6,7 +6,7 @@ Write-Host "=== Testing Backend Endpoints ===" -ForegroundColor Cyan
 
 # Test 1: Login to get token
 Write-Host "`nStep 1: Authenticating..." -ForegroundColor Yellow
-$loginBody = @{ email = "admin@nestfind.com"; password = "admin123" } | ConvertTo-Json
+$loginBody = @{ email = "admin@kazikonnect.com"; password = "admin123" } | ConvertTo-Json
 try {
     $loginResponse = Invoke-RestMethod -Uri "$baseUrl/auth/login" -Method Post -Body $loginBody -Headers $headers -ErrorAction Stop
     $token = $loginResponse.token

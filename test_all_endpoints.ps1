@@ -1,4 +1,4 @@
-# NestFind Platform End-to-End API Test Suite
+# Kazi Konnect Platform End-to-End API Test Suite
 $baseUrl = "http://localhost:8080/api"
 $headers = @{ "Content-Type" = "application/json" }
 
@@ -12,7 +12,7 @@ Write-Host-Section "Testing Registration & Authentication"
 # Register a new test user
 $registerBody = @{ 
     username = "new_tester_" + (Get-Date -Format "mm_ss")
-    email = "test_" + (Get-Date -Format "mm_ss") + "@nestfind.com"
+    email = "test_" + (Get-Date -Format "mm_ss") + "@kazikonnect.com"
     password = "password123"
     role = "CLIENT"
 } | ConvertTo-Json
@@ -25,7 +25,7 @@ try {
 }
 
 # Login as Admin
-$loginBody = @{ email = "admin@nestfind.com"; password = "admin123" } | ConvertTo-Json
+$loginBody = @{ email = "admin@kazikonnect.com"; password = "admin123" } | ConvertTo-Json
 try {
     $loginResponse = Invoke-RestMethod -Uri "$baseUrl/auth/login" -Method Post -Body $loginBody -Headers $headers
     $token = $loginResponse.token

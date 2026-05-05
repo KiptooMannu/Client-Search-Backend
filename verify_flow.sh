@@ -1,4 +1,4 @@
-# NestFind API Verification Script
+# Kazi Konnect API Verification Script
 
 # 1. Register a new worker
 echo "Registering new worker..."

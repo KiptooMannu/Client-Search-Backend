@@ -1,4 +1,4 @@
-# End-to-End Verification Script for NestFind
+# End-to-End Verification Script for Kazi Konnect
 $ErrorActionPreference = "Stop"
 
 $baseUrl = "http://localhost:8080/api"
