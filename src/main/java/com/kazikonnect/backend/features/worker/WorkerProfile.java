@@ -112,8 +112,13 @@ public class WorkerProfile {
     @Column(name = "rejected_at")
     private LocalDateTime rejectedAt;
 
+    @Builder.Default
     @Embedded
-    private Availability availabilityDetails;
+    private Availability availabilityDetails = Availability.builder()
+        .weekdays(true)
+        .weekends(true)
+        .evenings(false)
+        .build();
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;

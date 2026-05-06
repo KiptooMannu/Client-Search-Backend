@@ -192,7 +192,7 @@ public class WorkerController {
 
             if (updates.certifications() != null) {
                 existing.getCertifications().clear();
-                for (CertificationDTO dto : updates.certifications()) {
+                for (CertificationCreateDTO dto : updates.certifications()) {
                     Certification cert = Certification.builder()
                         .worker(existing)
                         .name(dto.name())
@@ -302,5 +302,5 @@ record WorkerProfileUpdateRequest(
     String profilePictureUrl,
     Availability availabilityDetails,
     java.util.List<WorkHistoryDTO> workHistory,
-    java.util.List<CertificationDTO> certifications
+    java.util.List<CertificationCreateDTO> certifications
 ) {}

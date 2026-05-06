@@ -32,5 +32,6 @@ public class Certification {
     @Column(nullable = false)
     private String issuer;
 
+    @Column(name = "issue_year")
     private Integer year;
 }

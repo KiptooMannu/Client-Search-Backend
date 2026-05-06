@@ -52,6 +52,7 @@ public class AdminController {
 
     @PutMapping("/workers/{id}/approve")
     @PreAuthorize("hasRole('ADMIN')")
+    @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<?> approveWorker(@PathVariable UUID id, @RequestParam UUID adminId) {
         WorkerProfile worker = workerProfileRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Worker not found"));

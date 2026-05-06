@@ -28,7 +28,7 @@ try {
 $loginBody = @{ email = "admin@kazikonnect.com"; password = "admin123" } | ConvertTo-Json
 try {
     $loginResponse = Invoke-RestMethod -Uri "$baseUrl/auth/login" -Method Post -Body $loginBody -Headers $headers
-    $token = $loginResponse.token
+    $token = $loginResponse.accessToken
     $authHeaders = @{ 
         "Content-Type" = "application/json"
         "Authorization" = "Bearer $token"

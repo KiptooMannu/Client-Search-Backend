@@ -72,33 +72,19 @@ $profileBody = @{
     bio = "Expert plumber with verified identity and documents."
     location = "Nairobi"
     experienceYears = 10
-    skills = @($selectedSkill)
+    skills = @($selectedSkill.name)
 } | ConvertTo-Json
 $workerProfile = Test-Endpoint "Create Worker Profile" { 
     Invoke-RestMethod -Uri "$baseUrl/workers/profile?email=$workerEmail" -Method Post -Body $profileBody -Headers $workerHeaders 
 }
-$profileId = $workerProfile.id
-
-# 2.3 Upload Identity Document
-$boundary = [System.Guid]::NewGuid().ToString()
-$LF = "`r`n"
-$bodyLines = (
-    "--$boundary",
-    "Content-Disposition: form-data; name=`"file`"; filename=`"id.txt`"",
-    "Content-Type: text/plain",
-    "",
-    "Mock ID content for verification",
-    "--$boundary--",
-    ""
-) -join $LF
-
-$uploadHeaders = @{ 
-    "Authorization" = "Bearer $workerToken"
-    "Content-Type" = "multipart/form-data; boundary=$boundary"
-}
+$profileId = $workerProfile.profile.id
+Write-Host "DEBUG: profileId = $profileId" -ForegroundColor Gray
+Write-Host "DEBUG: adminId = $adminId" -ForegroundColor Gray
 
 Test-Endpoint "Upload Identity Document" {
-    Invoke-RestMethod -Uri "$baseUrl/documents?workerProfileId=$profileId&type=ID&name=National_ID" -Method Post -Body $bodyLines -Headers $uploadHeaders
+    curl.exe -s -X POST "$baseUrl/documents?workerProfileId=$profileId&type=ID&name=National_ID" `
+             -H "Authorization: Bearer $workerToken" `
+             -F "file=@test_id.png"
 }
 
 Write-Section "3. ADMIN VERIFICATION FLOW"
@@ -146,4 +132,5 @@ $reviews = Test-Endpoint "Verify Worker Reviews" {
 }
 
 Write-Section "SUMMARY"
+Write-Host "✅ Verified $($reviews.Count) reviews for the worker." -ForegroundColor Gray
 Write-Host "All end-to-end features (Auth, Profile, Docs, Hiring, Reviews) verified operational." -ForegroundColor Green
