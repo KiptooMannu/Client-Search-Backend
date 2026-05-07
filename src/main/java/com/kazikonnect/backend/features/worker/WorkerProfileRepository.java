@@ -41,6 +41,7 @@ public interface WorkerProfileRepository extends JpaRepository<WorkerProfile, UU
        List<WorkerProfile> findAllWithDetails();
 
        List<WorkerProfile> findAllByStatus(WorkerStatus status);
+       long countByStatus(WorkerStatus status);
 
        @Query("SELECT DISTINCT w.location FROM WorkerProfile w WHERE w.isVisible = true AND w.status = com.kazikonnect.backend.features.worker.WorkerStatus.APPROVED AND w.location IS NOT NULL")
        List<String> findDistinctLocations();

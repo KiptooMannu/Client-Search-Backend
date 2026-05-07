@@ -1,5 +1,8 @@
 package com.kazikonnect.backend.features.worker;
 
+import com.kazikonnect.backend.features.common.Notification;
+import com.kazikonnect.backend.features.common.NotificationRepository;
+import com.kazikonnect.backend.features.auth.UserRole;
 import com.kazikonnect.backend.features.auth.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -20,6 +23,7 @@ public class WorkerController {
     private final WorkHistoryRepository workHistoryRepository;
     private final CertificationRepository certificationRepository;
     private final com.kazikonnect.backend.core.services.CloudinaryService cloudinaryService;
+    private final NotificationRepository notificationRepository;
 
     // CREATE: Submit a new worker profile (updates existing if already present)
     @PostMapping("/profile")
@@ -144,73 +148,77 @@ public class WorkerController {
     // UPDATE: Worker edits their profile (resets to PENDING for re-verification)
     @PutMapping("/profile/{profileId}")
     @PreAuthorize("hasRole('WORKER')")
+    @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<?> updateProfile(@PathVariable UUID profileId, @RequestBody WorkerProfileUpdateRequest updates, Principal principal) {
-        System.out.println("Processing UPDATE request for profileId: " + profileId);
-        return workerProfileRepository.findById(profileId).map(existing -> {
-            var actor = userRepository.findByUsername(principal.getName()).orElse(null);
-            if (actor == null) {
-                return ResponseEntity.status(401).body("Unauthorized");
-            }
-            if (existing.getUser() == null || !existing.getUser().getId().equals(actor.getId())) {
-                return ResponseEntity.status(403).body("Forbidden: cannot edit another worker profile.");
-            }
-            if (updates.fullName() != null) existing.setFullName(updates.fullName());
-            if (updates.phoneNumber() != null) existing.setPhoneNumber(updates.phoneNumber());
-            if (updates.bio() != null) existing.setBio(updates.bio());
-            if (updates.location() != null) existing.setLocation(updates.location());
-            if (updates.experienceYears() != null) existing.setExperienceYears(updates.experienceYears());
-            if (updates.hourlyRate() != null) existing.setHourlyRate(updates.hourlyRate());
-            if (updates.category() != null) existing.setCategory(updates.category());
-            if (updates.profilePictureUrl() != null) existing.setProfilePictureUrl(updates.profilePictureUrl());
-            if (updates.availabilityDetails() != null) existing.setAvailabilityDetails(updates.availabilityDetails());
-            
-            if (updates.skills() != null) {
-                java.util.Set<Skill> managedSkills = updates.skills().stream()
-                    .map(skillName -> skillRepository.findByName(skillName)
-                        .orElseGet(() -> skillRepository.save(Skill.builder().name(skillName).build())))
-                    .collect(java.util.stream.Collectors.toSet());
-                existing.setSkills(managedSkills);
-            }
-
-            if (updates.preferredLocations() != null) {
-                existing.setPreferredLocations(updates.preferredLocations());
-            }
-
-            if (updates.workHistory() != null) {
-                existing.getWorkHistory().clear();
-                for (WorkHistoryDTO dto : updates.workHistory()) {
-                    WorkHistory wh = WorkHistory.builder()
-                        .worker(existing)
-                        .company(dto.company())
-                        .role(dto.role())
-                        .period(dto.period())
-                        .description(dto.description())
-                        .build();
-                    existing.getWorkHistory().add(wh);
+        try {
+            return workerProfileRepository.findById(profileId).map(existing -> {
+                var actor = userRepository.findByUsername(principal.getName()).orElse(null);
+                if (actor == null) {
+                    return ResponseEntity.status(401).body("Unauthorized");
                 }
-            }
-
-            if (updates.certifications() != null) {
-                existing.getCertifications().clear();
-                for (CertificationCreateDTO dto : updates.certifications()) {
-                    Certification cert = Certification.builder()
-                        .worker(existing)
-                        .name(dto.name())
-                        .issuer(dto.issuer())
-                        .year(dto.year())
-                        .build();
-                    existing.getCertifications().add(cert);
+                if (existing.getUser() == null || !existing.getUser().getId().equals(actor.getId())) {
+                    return ResponseEntity.status(403).body("Forbidden: cannot edit another worker profile.");
                 }
-            }
+                if (updates.fullName() != null) existing.setFullName(updates.fullName());
+                if (updates.phoneNumber() != null) existing.setPhoneNumber(updates.phoneNumber());
+                if (updates.bio() != null) existing.setBio(updates.bio());
+                if (updates.location() != null) existing.setLocation(updates.location());
+                if (updates.experienceYears() != null) existing.setExperienceYears(updates.experienceYears());
+                if (updates.hourlyRate() != null) existing.setHourlyRate(updates.hourlyRate());
+                if (updates.category() != null) existing.setCategory(updates.category());
+                if (updates.profilePictureUrl() != null) existing.setProfilePictureUrl(updates.profilePictureUrl());
+                if (updates.availabilityDetails() != null) existing.setAvailabilityDetails(updates.availabilityDetails());
+                
+                if (updates.skills() != null) {
+                    java.util.Set<Skill> managedSkills = updates.skills().stream()
+                        .map(skillName -> skillRepository.findByName(skillName)
+                            .orElseGet(() -> skillRepository.save(Skill.builder().name(skillName).build())))
+                        .collect(java.util.stream.Collectors.toSet());
+                    existing.getSkills().clear();
+                    existing.getSkills().addAll(managedSkills);
+                }
 
-            // If profile was already approved, editing it resets it to PENDING for re-review
-            // If it was DRAFT or REJECTED, it stays in that state until explicitly submitted
-            if (existing.getStatus() == WorkerStatus.APPROVED) {
-                existing.setStatus(WorkerStatus.PENDING);
-                existing.setVisible(false);
-            }
-            return ResponseEntity.ok(WorkerProfileDTO.from(workerProfileRepository.save(existing)));
-        }).orElse(ResponseEntity.notFound().build());
+                if (updates.preferredLocations() != null) {
+                    existing.setPreferredLocations(updates.preferredLocations());
+                }
+
+                if (updates.workHistory() != null) {
+                    existing.getWorkHistory().clear();
+                    for (WorkHistoryDTO dto : updates.workHistory()) {
+                        WorkHistory wh = WorkHistory.builder()
+                            .worker(existing)
+                            .company(dto.company())
+                            .role(dto.role())
+                            .period(dto.period())
+                            .description(dto.description())
+                            .build();
+                        existing.getWorkHistory().add(wh);
+                    }
+                }
+
+                if (updates.certifications() != null) {
+                    existing.getCertifications().clear();
+                    for (CertificationCreateDTO dto : updates.certifications()) {
+                        Certification cert = Certification.builder()
+                            .worker(existing)
+                            .name(dto.name())
+                            .issuer(dto.issuer())
+                            .year(dto.year())
+                            .build();
+                        existing.getCertifications().add(cert);
+                    }
+                }
+
+                if (existing.getStatus() == WorkerStatus.APPROVED || existing.getStatus() == WorkerStatus.REJECTED) {
+                    existing.setStatus(WorkerStatus.PENDING);
+                    existing.setVisible(false);
+                }
+                return ResponseEntity.ok(WorkerProfileDTO.from(workerProfileRepository.saveAndFlush(existing)));
+            }).orElse(ResponseEntity.notFound().build());
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().body("Update Error: " + e.getMessage());
+        }
     }
 
     // UPDATE: Upload profile picture
@@ -240,6 +248,23 @@ public class WorkerController {
         }).orElse(ResponseEntity.notFound().build());
     }
 
+    // DELETE: Remove profile picture
+    @DeleteMapping("/{profileId}/profile-picture")
+    @PreAuthorize("hasRole('WORKER')")
+    public ResponseEntity<?> deleteProfilePicture(@PathVariable UUID profileId, Principal principal) {
+        return workerProfileRepository.findById(profileId).map(existing -> {
+            var actor = userRepository.findByUsername(principal.getName()).orElse(null);
+            if (actor == null) {
+                return ResponseEntity.status(401).body("Unauthorized");
+            }
+            if (existing.getUser() == null || !existing.getUser().getId().equals(actor.getId())) {
+                return ResponseEntity.status(403).body("Forbidden: cannot edit another worker profile.");
+            }
+            existing.setProfilePictureUrl(null);
+            return ResponseEntity.ok(WorkerProfileDTO.from(workerProfileRepository.save(existing)));
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
     // UPDATE: Explicitly submit for verification
     @PutMapping("/{profileId}/submit")
     @PreAuthorize("hasRole('WORKER')")
@@ -265,7 +290,19 @@ public class WorkerController {
             }
             existing.setStatus(WorkerStatus.PENDING);
             existing.setVisible(false);
-            return ResponseEntity.ok(WorkerProfileDTO.from(workerProfileRepository.save(existing)));
+            WorkerProfile saved = workerProfileRepository.save(existing);
+            
+            // Notify Admins
+            userRepository.findAllByRole(UserRole.ADMIN).forEach(admin -> {
+                notificationRepository.save(Notification.builder()
+                    .user(admin)
+                    .title("New Verification Request")
+                    .message("Worker " + (saved.getFullName() != null ? saved.getFullName() : actor.getUsername()) + " has submitted their profile for verification.")
+                    .type("INFO")
+                    .build());
+            });
+
+            return ResponseEntity.ok(WorkerProfileDTO.from(saved));
         }).orElse(ResponseEntity.notFound().build());
     }
 

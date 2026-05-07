@@ -11,7 +11,8 @@ public record JobRequestDTO(
     String workerName,
     String description,
     String status,
-    LocalDateTime createdAt
+    LocalDateTime createdAt,
+    Double totalCost
 ) {
     public static JobRequestDTO from(JobRequest j) {
         return new JobRequestDTO(
@@ -22,7 +23,8 @@ public record JobRequestDTO(
             j.getWorker() != null ? j.getWorker().getFullName() : null,
             j.getDescription(),
             j.getStatus().name(),
-            j.getCreatedAt()
+            j.getCreatedAt(),
+            j.getTotalCost()
         );
     }
 }

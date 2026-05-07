@@ -13,4 +13,6 @@ public interface MessageRepository extends JpaRepository<Message, UUID> {
 
     @Query("SELECT m FROM Message m WHERE m.sentAt IN (SELECT MAX(m2.sentAt) FROM Message m2 WHERE m2.sender.id = :userId OR m2.receiver.id = :userId GROUP BY CASE WHEN m2.sender.id = :userId THEN m2.receiver.id ELSE m2.sender.id END) ORDER BY m.sentAt DESC")
     List<Message> findRecentConversations(UUID userId);
+    
+    List<Message> findBySenderIdAndReceiverIdAndIsReadFalse(UUID senderId, UUID receiverId);
 }

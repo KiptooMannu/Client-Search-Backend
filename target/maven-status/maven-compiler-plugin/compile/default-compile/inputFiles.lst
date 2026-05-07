@@ -31,8 +31,10 @@ C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\feat
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\common\NotificationController.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\common\NotificationDTO.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\common\NotificationRepository.java
+C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\common\UserContactDTO.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\worker\Availability.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\worker\Certification.java
+C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\worker\CertificationCreateDTO.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\worker\CertificationDTO.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\worker\CertificationRepository.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\worker\Document.java

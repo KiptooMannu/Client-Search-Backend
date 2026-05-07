@@ -13,6 +13,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import com.kazikonnect.backend.features.common.Notification;
+import com.kazikonnect.backend.features.common.NotificationRepository;
+import com.kazikonnect.backend.features.common.Message;
+import com.kazikonnect.backend.features.common.MessageRepository;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -29,6 +33,8 @@ public class AdminController {
     private final AuthRepository authRepository;
     private final ClientProfileRepository clientProfileRepository;
     private final AdminLogRepository adminLogRepository;
+    private final NotificationRepository notificationRepository;
+    private final MessageRepository messageRepository;
 
     // ==================== WORKER MANAGEMENT ====================
 
@@ -82,6 +88,14 @@ public class AdminController {
                 .targetId(id)
                 .build());
 
+        // Notify Worker
+        notificationRepository.save(Notification.builder()
+                .user(worker.getUser())
+                .title("Profile Approved! 🎉")
+                .message("Congratulations! Your profile has been verified and is now live on the platform.")
+                .type("SUCCESS")
+                .build());
+
         return ResponseEntity.ok(java.util.Map.of(
             "message", "Worker " + worker.getFullName() + " verified and is now live!",
             "status", "APPROVED"
@@ -109,6 +123,25 @@ public class AdminController {
                 .action("REJECT_WORKER")
                 .targetId(id)
                 .build());
+
+        // Notify Worker
+        notificationRepository.save(Notification.builder()
+                .user(worker.getUser())
+                .title("Verification Update")
+                .message("Your profile verification was unsuccessful. Reason: " + reason)
+                .type("WARNING")
+                .build());
+
+        // Also send an actual Message so it appears in the chat
+        userRepository.findById(adminId).ifPresent(adminUser -> {
+            messageRepository.save(Message.builder()
+                .sender(adminUser)
+                .receiver(worker.getUser())
+                .content("System: Your profile verification was unsuccessful. Reason: " + reason)
+                .sentAt(LocalDateTime.now())
+                .isRead(false)
+                .build());
+        });
 
         return ResponseEntity.ok(java.util.Map.of(
             "message", "Worker rejected. Reason: " + reason,
@@ -220,6 +253,15 @@ public class AdminController {
         }
         auth.setActive(false);
         authRepository.save(auth);
+
+        // Notify User
+        notificationRepository.save(Notification.builder()
+                .user(userRepository.findById(id).orElse(null))
+                .title("Account Suspended")
+                .message("Your account has been suspended by an administrator. Please contact support.")
+                .type("WARNING")
+                .build());
+
         return ResponseEntity.ok("User suspended successfully.");
     }
 

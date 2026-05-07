@@ -11,6 +11,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
@@ -29,83 +30,137 @@ public class DataInitializer implements CommandLineRunner {
     private final com.kazikonnect.backend.features.common.NotificationRepository notificationRepository;
     private final com.kazikonnect.backend.features.worker.JobRequestRepository jobRequestRepository;
     private final com.kazikonnect.backend.features.worker.ReviewRepository reviewRepository;
+    private final DocumentRepository documentRepository;
 
     private static final String PASS = "password123";
 
     @Override
     public void run(String... args) throws Exception {
-
-        try {
-            jdbcTemplate.execute("ALTER TABLE worker_profiles DROP CONSTRAINT IF EXISTS worker_profiles_status_check");
-            log.info("Successfully dropped legacy worker_profiles_status_check constraint.");
-        } catch (Exception e) {
-            log.warn("Could not drop constraint (it might already be gone): {}", e.getMessage());
-        }
-
         log.info("--- Starting Database Seeding ---");
-        cleanup();
-        seedSkills();
-        seedAdmin();
-        seedNamedWorkers();
-        seedNamedClients();
-        seedBulkWorkers();
-        seedBulkClients();
+        
+        // Seed if no approved workers exist
+        if (workerProfileRepository.countByStatus(WorkerStatus.APPROVED) == 0) {
+            seedSkills();
+            seedAdmin();
+            seedNamedWorkers();
+            seedNamedClients();
+            seedBulkWorkers();
+            seedPendingWorkers();
+            seedBulkClients();
+        }
+        
+        // Always refresh interactions for verification
         seedInteractions();
-        log.info("--- Database Seeding Complete ---");
+        log.info("--- Database Seeding / Interaction Refresh Complete ---");
+    }
+
+    private void seedPendingWorkers() {
+        log.info("--- Seeding Pending Workers for Verification ---");
+        
+        // 1. Fully Complete Pending Worker
+        createWorkerStatus("emmanuel_worker", "emmanuel@worker.com", "Emmanuel Otieno", "Plumbing", 25.0, 
+            "https://images.unsplash.com/photo-1540569014015-19a7be504e3a?q=80&w=2000&auto=format&fit=crop",
+            "Professional plumber with 10 years of experience looking for new opportunities.", WorkerStatus.PENDING, true);
+
+        // 2. Worker with ID verification pending
+        createWorkerStatus("jane_electric", "jane@power.com", "Jane Doe", "Electrical Wiring", 35.0,
+            "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=2000&auto=format&fit=crop",
+            "Licensed electrician specializing in industrial circuits.", WorkerStatus.PENDING, true);
+
+        // 3. Rejected worker (demonstrate re-submission)
+        createWorkerStatus("mike_rejected", "mike.r@worker.com", "Mike Rejected", "Masonry", 22.0,
+            "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=2000&auto=format&fit=crop",
+            "I was rejected before but I've updated my documents.", WorkerStatus.REJECTED, true);
+
+        // 4. Worker without documents (DRAFT status)
+        createWorkerStatus("draft_worker", "draft@worker.com", "Draft User", "General Repairs", 15.0,
+            null, "I am just starting out and haven't uploaded docs yet.", WorkerStatus.DRAFT, false);
+
+        // 5. New Pending: Interior Design
+        createWorkerStatus("alice_design", "alice@design.com", "Alice Mwangi", "Interior Design", 45.0,
+            "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=2000&auto=format&fit=crop",
+            "Creative designer focusing on modern African aesthetics.", WorkerStatus.PENDING, true);
     }
 
     private void seedInteractions() {
-        if (messageRepository.count() > 5)
-            return;
+        // Clear existing interactions to ensure fresh seed for verification
+        messageRepository.deleteAll();
+        notificationRepository.deleteAll();
+        reviewRepository.deleteAll();
+        jobRequestRepository.deleteAll();
+
+        // Flush deletes
+        messageRepository.flush();
+        notificationRepository.flush();
+        jobRequestRepository.flush();
+
         log.info("--- Seeding Interlinked Interactions (Jobs & Reviews) ---");
 
-        List<User> clients = userRepository.findAll().stream()
+        List<User> clients = new ArrayList<>(userRepository.findAll().stream()
                 .filter(u -> UserRole.CLIENT.equals(u.getRole()))
-                .limit(30)
-                .toList();
-        List<WorkerProfile> workers = workerProfileRepository.findAll().stream()
-                .limit(30)
-                .toList();
+                .sorted((u1, u2) -> u1.getEmail().equals("client@user.com") ? -1 : 1) // Prioritize client@user.com
+                .limit(10)
+                .collect(Collectors.toList()));
+        
+        List<WorkerProfile> workers = new ArrayList<>(workerProfileRepository.findAll().stream()
+                .filter(w -> w.getStatus() == WorkerStatus.APPROVED && w.getUser() != null)
+                .limit(10)
+                .collect(Collectors.toList()));
+
+        JobStatus[] statuses = { JobStatus.PENDING, JobStatus.ACCEPTED, JobStatus.COMPLETED, JobStatus.REJECTED };
 
         for (int i = 0; i < Math.min(clients.size(), workers.size()); i++) {
             User client = clients.get(i);
             WorkerProfile worker = workers.get(i);
+            JobStatus status = statuses[i % statuses.length];
 
             // 1. Job Request
             JobRequest job = JobRequest.builder()
                     .client(client)
                     .worker(worker)
-                    .description("Standard service request for " + worker.getCategory())
-                    .status(i % 2 == 0 ? JobStatus.COMPLETED : JobStatus.PENDING)
+                    .description("High-priority " + worker.getCategory() + " project for " + client.getFullName())
+                    .status(status)
+                    .totalCost(worker.getHourlyRate() * 4) // 4 hours work
                     .build();
             jobRequestRepository.save(job);
 
             // 2. Review (only for completed jobs)
-            if (job.getStatus() == JobStatus.COMPLETED) {
+            if (status == JobStatus.COMPLETED) {
                 reviewRepository.save(Review.builder()
                         .client(client)
                         .worker(worker)
-                        .rating(4 + (i % 2))
-                        .comment("Excellent work on the " + worker.getCategory() + " project. " + worker.getFullName()
-                                + " was professional and efficient.")
+                        .rating(5)
+                        .comment("Exceptional service! " + worker.getFullName() + " exceeded all expectations.")
                         .build());
             }
 
-            // 3. Message
-            messageRepository.save(Message.builder()
-                    .sender(client)
-                    .receiver(worker.getUser())
-                    .content("Hi, I'm interested in your " + worker.getCategory() + " expertise.")
-                    .build());
+            // 3. Message (Bi-directional conversation)
+            if (worker.getUser() != null) {
+                messageRepository.save(Message.builder()
+                        .sender(client)
+                        .receiver(worker.getUser())
+                        .content("Hi " + worker.getFullName() + ", I'd like to hire you for a " + worker.getCategory() + " project.")
+                        .isRead(true)
+                        .build());
+                
+                messageRepository.save(Message.builder()
+                        .sender(worker.getUser())
+                        .receiver(client)
+                        .content("Hello " + client.getFullName() + ", I'm available! Let's discuss the details.")
+                        .isRead(false) // Unread message for client to see badge
+                        .build());
+            }
 
             // 4. Notification
             notificationRepository.save(Notification.builder()
                     .user(worker.getUser())
-                    .title("New Activity")
-                    .message(client.getFullName() + " interacted with your profile.")
+                    .title("New Hire Request")
+                    .message(client.getFullName() + " has requested your services.")
                     .type("INFO")
                     .build());
         }
+        
+        log.info("Successfully seeded interactions for {} connections.", Math.min(clients.size(), workers.size()));
     }
 
     // ─── 1. Skills ──────────────────────────────────────────────────────────────
@@ -130,6 +185,22 @@ public class DataInitializer implements CommandLineRunner {
                 .fullName("System Administrator").role(UserRole.ADMIN).build());
         authRepository.save(Auth.builder().user(u)
                 .passwordHash(passwordEncoder.encode("admin123")).isActive(true).build());
+        
+        // Seed Admin Notifications
+        notificationRepository.save(Notification.builder()
+                .user(u)
+                .title("Welcome to Kazi Konnect")
+                .message("System is ready. 5 workers are pending verification.")
+                .type("INFO")
+                .build());
+        
+        notificationRepository.save(Notification.builder()
+                .user(u)
+                .title("System Audit")
+                .message("Scheduled backup completed successfully.")
+                .type("SUCCESS")
+                .build());
+
         log.info("Seeded admin: admin@kazikonnect.com / admin123");
     }
 
@@ -137,19 +208,22 @@ public class DataInitializer implements CommandLineRunner {
     private void seedNamedWorkers() {
         createWorker("sarah_design", "sarah@design.com", "Sarah Johnson", "Interior Design", 25.0,
                 "https://images.unsplash.com/photo-1594744803329-a584af1dd51a?q=80&w=2000&auto=format&fit=crop",
-                "Transforming spacomces with elegant and functional designs for over 8 years.");
+                "Transforming spaces with elegant and functional designs for over 8 years.", WorkerStatus.PENDING);
         createWorker("david_electric", "david@power.com", "David Chen", "Electrical Wiring", 30.0,
                 "https://images.unsplash.com/photo-1560250097-0b93528c311a?q=80&w=2000&auto=format&fit=crop",
-                "Expert electrician specializing in smart home integration and safety audits.");
+                "Expert electrician specializing in smart home integration and safety audits.", WorkerStatus.APPROVED);
         createWorker("mike_plumb", "mike@pipes.com", "Michael Smith", "Plumbing", 28.0,
                 "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=2000&auto=format&fit=crop",
-                "Reliable plumbing solutions for residential and commercial properties.");
+                "Reliable plumbing solutions for residential and commercial properties.", WorkerStatus.PENDING);
     }
 
     private void createWorker(String username, String email, String fullName, String category, double rate, String img,
-            String bio) {
-        if (userRepository.existsByEmail(email))
-            return;
+            String bio, WorkerStatus status) {
+        createWorkerStatus(username, email, fullName, category, rate, img, bio, status, status == WorkerStatus.APPROVED);
+    }
+
+    private void createWorkerStatus(String username, String email, String fullName, String category, double rate, String img, String bio, WorkerStatus status, boolean withDocs) {
+        if (userRepository.existsByEmail(email)) return;
 
         User u = userRepository.save(User.builder()
                 .username(username).email(email).fullName(fullName)
@@ -158,21 +232,51 @@ public class DataInitializer implements CommandLineRunner {
         authRepository.save(Auth.builder().user(u)
                 .passwordHash(passwordEncoder.encode(PASS)).isActive(true).build());
 
-        workerProfileRepository.save(WorkerProfile.builder()
+        WorkerProfile profile = workerProfileRepository.save(WorkerProfile.builder()
                 .user(u)
                 .fullName(fullName)
                 .category(category)
                 .hourlyRate(rate)
                 .profilePictureUrl(img)
                 .bio(bio)
-                .status(WorkerStatus.APPROVED)
-                .isVisible(true)
+                .status(status)
+                .isVisible(status == WorkerStatus.APPROVED)
                 .isOnline(true)
                 .location("Nairobi, Kenya")
-                .experienceYears(5)
+                .phoneNumber("07" + (10000000 + (int)(Math.random() * 90000000)))
+                .experienceYears(3 + (int)(Math.random() * 10))
                 .build());
 
-        log.info("Seeded worker: {}", email);
+        // Add Skills
+        Set<Skill> skills = skillRepository.findAll().stream().limit(3).collect(Collectors.toSet());
+        profile.setSkills(skills);
+        workerProfileRepository.save(profile);
+
+        // Add Work History
+        jdbcTemplate.update("INSERT INTO worker_work_history (id, worker_id, company, role, period, description) VALUES (?, ?, ?, ?, ?, ?)",
+                UUID.randomUUID(), profile.getId(), "Elite " + category + " Solutions", "Senior " + category, "Jan 2020 - Dec 2023", "Handled high-end projects across the city with exceptional quality.");
+
+        // Add Certification
+        jdbcTemplate.update("INSERT INTO worker_certifications (id, worker_id, name, issuer, issue_year) VALUES (?, ?, ?, ?, ?)",
+                UUID.randomUUID(), profile.getId(), "Certified " + category + " Specialist", "National Industrial Training Authority", 2019);
+
+        if (withDocs) {
+            documentRepository.save(Document.builder()
+                    .worker(profile)
+                    .name("National ID")
+                    .type("Identification")
+                    .documentUrl("https://res.cloudinary.com/demo/image/upload/v1/sample.jpg")
+                    .build());
+            
+            documentRepository.save(Document.builder()
+                    .worker(profile)
+                    .name("Trade Certificate")
+                    .type("Certification")
+                    .documentUrl("https://res.cloudinary.com/demo/image/upload/v1/sample.jpg")
+                    .build());
+        }
+
+        log.info("Seeded rich {} worker: {}", status, email);
     }
 
     // ─── 4. Named Clients (rich data) ────────────────────────────────────────────
@@ -209,10 +313,11 @@ public class DataInitializer implements CommandLineRunner {
                 "General Repairs" };
         for (int i = 1; i <= 30; i++) {
             String email = "worker" + i + "@kazikonnect.com";
-            createWorker("pro_user_" + i, email, "Professional Worker " + i,
+            createWorkerStatus("pro_user_" + i, email, "Professional Worker " + i,
                     categories[i % categories.length], 20.0 + (i % 15),
                     "https://images.unsplash.com/photo-1540553016722-983e48a2cd10?q=80&w=2000&auto=format&fit=crop",
-                    "Dedicated professional with years of experience in " + categories[i % categories.length] + ".");
+                    "Dedicated professional with years of experience in " + categories[i % categories.length] + ".",
+                    WorkerStatus.APPROVED, true);
         }
     }
 
@@ -226,22 +331,4 @@ public class DataInitializer implements CommandLineRunner {
         }
     }
 
-    private void cleanup() {
-        log.info("Cleaning up database (Fast SQL Wipe)...");
-        try {
-            jdbcTemplate.execute("TRUNCATE TABLE messages, notifications, reviews, job_requests, auth, client_profiles, worker_profiles, users, skills RESTART IDENTITY CASCADE");
-            log.info("Database wiped successfully.");
-        } catch (Exception e) {
-            log.warn("Standard truncate failed, trying repository delete: {}", e.getMessage());
-            messageRepository.deleteAll();
-            notificationRepository.deleteAll();
-            reviewRepository.deleteAll();
-            jobRequestRepository.deleteAll();
-            authRepository.deleteAll();
-            clientProfileRepository.deleteAll();
-            workerProfileRepository.deleteAll();
-            userRepository.deleteAll();
-            skillRepository.deleteAll();
-        }
-    }
 }

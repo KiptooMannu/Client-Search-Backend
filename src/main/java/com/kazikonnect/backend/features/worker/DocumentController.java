@@ -1,5 +1,6 @@
 package com.kazikonnect.backend.features.worker;
 
+import com.kazikonnect.backend.features.auth.UserRepository;
 import com.kazikonnect.backend.core.services.CloudinaryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -22,6 +23,7 @@ public class DocumentController {
     private final DocumentRepository documentRepository;
     private final WorkerProfileRepository workerProfileRepository;
     private final CloudinaryService cloudinaryService;
+    private final UserRepository userRepository;
 
     // CREATE: Worker uploads a document to Cloudinary
     @PostMapping
@@ -80,11 +82,20 @@ public class DocumentController {
     // DELETE: Delete a document
     @DeleteMapping("/{documentId}")
     @PreAuthorize("hasRole('WORKER') or hasRole('ADMIN')")
-    public ResponseEntity<?> deleteDocument(@PathVariable UUID documentId) {
-        if (!documentRepository.existsById(documentId)) {
-            return ResponseEntity.notFound().build();
-        }
-        documentRepository.deleteById(documentId);
-        return ResponseEntity.ok("Document deleted successfully.");
+    public ResponseEntity<?> deleteDocument(@PathVariable UUID documentId, java.security.Principal principal) {
+        return documentRepository.findById(documentId).map(doc -> {
+            var user = userRepository.findByUsername(principal.getName()).orElse(null);
+            if (user == null) return ResponseEntity.status(401).build();
+
+            boolean isAdmin = user.getRole() == com.kazikonnect.backend.features.auth.UserRole.ADMIN;
+            boolean isOwner = doc.getWorker() != null && doc.getWorker().getUser().getId().equals(user.getId());
+
+            if (!isAdmin && !isOwner) {
+                return ResponseEntity.status(403).body(java.util.Map.of("error", "Forbidden: You do not own this document"));
+            }
+
+            documentRepository.delete(doc);
+            return ResponseEntity.ok(java.util.Map.of("message", "Document deleted successfully"));
+        }).orElse(ResponseEntity.ok(java.util.Map.of("message", "Document already deleted")));
     }
 }

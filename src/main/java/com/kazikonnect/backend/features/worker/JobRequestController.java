@@ -19,6 +19,15 @@ public class JobRequestController {
     private final JobRequestRepository jobRequestRepository;
     private final UserRepository userRepository;
     private final WorkerProfileRepository workerProfileRepository;
+    
+    // READ: Get all job requests (Admin Oversight)
+    @GetMapping("/all")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> getAllJobs() {
+        return jobRequestRepository.findAll().stream()
+                .map(JobRequestDTO::from)
+                .collect(Collectors.collectingAndThen(Collectors.toList(), ResponseEntity::ok));
+    }
 
     // CREATE: Client requests a job
     @PostMapping("/request")
@@ -46,9 +55,19 @@ public class JobRequestController {
             return ResponseEntity.badRequest().body("Worker is not available for hire.");
         }
 
+        // Prevention of double hiring: Check for existing PENDING or ACCEPTED requests
+        boolean alreadyRequested = jobRequestRepository.findAllByClientId(clientId).stream()
+                .anyMatch(jr -> jr.getWorker().getId().equals(workerProfileId) && 
+                         (jr.getStatus() == JobStatus.PENDING || jr.getStatus() == JobStatus.ACCEPTED));
+        
+        if (alreadyRequested) {
+            return ResponseEntity.badRequest().body("You already have an active request with this professional.");
+        }
+
         jobRequest.setClient(client);
         jobRequest.setWorker(worker);
         jobRequest.setStatus(JobStatus.PENDING);
+        jobRequest.setTotalCost(worker.getHourlyRate());
 
         JobRequest saved = jobRequestRepository.save(jobRequest);
         return ResponseEntity.ok(JobRequestDTO.from(saved));

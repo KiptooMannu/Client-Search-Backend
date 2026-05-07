@@ -8,6 +8,7 @@ import java.util.stream.Collectors;
 
 public record WorkerProfileDTO(
     UUID id,
+    UUID userId,
     String username,
     String email,
     String fullName,
@@ -27,7 +28,9 @@ public record WorkerProfileDTO(
     List<WorkHistoryDTO> workHistory,
     List<CertificationDTO> certifications,
     List<DocumentDTO> documents,
-    Availability availabilityDetails
+    Availability availabilityDetails,
+    double averageRating,
+    int reviewCount
 ) {
     public static WorkerProfileDTO from(WorkerProfile p) {
         Set<String> skillNames = p.getSkills() == null ? Set.of() :
@@ -42,8 +45,13 @@ public record WorkerProfileDTO(
         List<DocumentDTO> docs = p.getDocuments() == null ? List.of() :
             p.getDocuments().stream().map(DocumentDTO::from).collect(Collectors.toList());
 
+        double avgRating = p.getReviews() == null || p.getReviews().isEmpty() ? 0.0 :
+            p.getReviews().stream().mapToInt(Review::getRating).average().orElse(0.0);
+        int reviews = p.getReviews() == null ? 0 : p.getReviews().size();
+
         return new WorkerProfileDTO(
             p.getId(),
+            p.getUser() != null ? p.getUser().getId() : null,
             p.getUser() != null ? p.getUser().getUsername() : null,
             p.getUser() != null ? p.getUser().getEmail() : null,
             p.getFullName(),
@@ -51,19 +59,21 @@ public record WorkerProfileDTO(
             p.getExperienceYears(),
             p.getLocation(),
             p.getBio(),
-            p.getStatus().name(),
-            p.getHourlyRate(),
+            p.getStatus() != null ? p.getStatus().name() : "DRAFT",
+            p.getHourlyRate() != null ? p.getHourlyRate() : 0.0,
             p.getCategory(),
             p.getProfilePictureUrl(),
             p.isOnline(),
             p.getRejectionReason(),
             p.getCreatedAt(),
             skillNames,
-            p.getPreferredLocations(),
+            p.getPreferredLocations() != null ? p.getPreferredLocations() : Set.of(),
             history,
             certs,
             docs,
-            p.getAvailabilityDetails()
+            p.getAvailabilityDetails() != null ? p.getAvailabilityDetails() : new Availability(true, false, false),
+            avgRating,
+            reviews
         );
     }
 }

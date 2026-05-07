@@ -5,6 +5,7 @@ import java.util.UUID;
 
 public record ClientProfileDTO(
     UUID id,
+    UUID userId,
     String username,
     String email,
     String fullName,
@@ -14,6 +15,7 @@ public record ClientProfileDTO(
     public static ClientProfileDTO from(ClientProfile p) {
         return new ClientProfileDTO(
             p.getId(),
+            p.getUser() != null ? p.getUser().getId() : null,
             p.getUser() != null ? p.getUser().getUsername() : null,
             p.getUser() != null ? p.getUser().getEmail() : null,
             p.getFullName(),
