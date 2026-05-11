@@ -79,14 +79,14 @@ public class AuthService {
     @Transactional
     public AuthResponse login(String email, String password) {
         Auth auth = authRepository.findByUserEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new RuntimeException("User not found. Please register."));
 
         if (!auth.isActive()) {
             throw new RuntimeException("Account is suspended. Please contact support.");
         }
 
         if (!passwordEncoder.matches(password, auth.getPasswordHash())) {
-            throw new RuntimeException("Invalid password");
+            throw new RuntimeException("Invalid email or password.");
         }
 
         auth.setLastLogin(LocalDateTime.now());

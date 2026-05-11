@@ -14,7 +14,12 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@Table(name = "messages")
+@Table(name = "messages", indexes = {
+    @Index(name = "idx_sender_receiver", columnList = "sender_id,receiver_id"),
+    @Index(name = "idx_sent_at", columnList = "sent_at"),
+    @Index(name = "idx_is_read", columnList = "is_read"),
+    @Index(name = "idx_receiver_id_read", columnList = "receiver_id,is_read")
+})
 public class Message {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)

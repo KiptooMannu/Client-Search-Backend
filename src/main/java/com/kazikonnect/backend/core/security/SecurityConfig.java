@@ -41,6 +41,7 @@ public class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**").permitAll()
+                .requestMatchers("/ws/**").permitAll()
                 .requestMatchers("/api/marketplace/search").permitAll()
                 .requestMatchers("/api/marketplace/**").permitAll()
                 .requestMatchers("/api/reviews/worker/**").permitAll()
@@ -59,9 +60,10 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(List.of("http://localhost:4200"));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("authorization", "content-type", "x-auth-token"));
-        configuration.setExposedHeaders(List.of("x-auth-token"));
+        configuration.setAllowedHeaders(Arrays.asList("*")); // Allow all headers including Authorization
+        configuration.setExposedHeaders(List.of("Authorization", "x-auth-token"));
         configuration.setAllowCredentials(true);
+        configuration.setMaxAge(3600L);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;

@@ -3,9 +3,13 @@ package com.kazikonnect.backend.features.common;
 import com.kazikonnect.backend.features.auth.User;
 import com.kazikonnect.backend.features.auth.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -18,15 +22,52 @@ public class MessageController {
 
     private final MessageRepository messageRepository;
     private final UserRepository userRepository;
+    private final SimpMessagingTemplate messagingTemplate;
 
-    public record MessageRequest(UUID senderId, UUID receiverId, String content) {}
+    public record MessageRequest(UUID senderId, UUID receiverId, String content, String attachmentUrl) {}
 
-    // READ: Get all users for messaging
+    // READ: Get conversation partners (paginated)
+    @GetMapping("/contacts")
+    @PreAuthorize("hasAnyRole('CLIENT', 'WORKER', 'ADMIN')")
+    public ResponseEntity<?> getContacts(@RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size, java.security.Principal principal) {
+        User user = userRepository.findByUsername(principal.getName()).orElse(null);
+        if (user == null) return ResponseEntity.status(401).body("Unauthorized.");
+        
+        Pageable pageable = PageRequest.of(page, size);
+        Page<User> contacts = messageRepository.findConversationPartners(user.getId(), pageable);
+        
+        List<UserContactDTO> dto = contacts.stream()
+                .map(u -> new UserContactDTO(u.getId(), u.getFullName() != null ? u.getFullName() : u.getUsername(), u.getEmail(), u.getRole() != null ? u.getRole().name() : "USER"))
+                .collect(Collectors.toList());
+        
+        return ResponseEntity.ok(new org.springframework.data.domain.PageImpl<>(dto, pageable, contacts.getTotalElements()));
+    }
+
+    // READ: Search conversation partners
+    @GetMapping("/contacts/search")
+    @PreAuthorize("hasAnyRole('CLIENT', 'WORKER', 'ADMIN')")
+    public ResponseEntity<?> searchContacts(@RequestParam String q, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size, java.security.Principal principal) {
+        User user = userRepository.findByUsername(principal.getName()).orElse(null);
+        if (user == null) return ResponseEntity.status(401).body("Unauthorized.");
+        if (q == null || q.trim().isEmpty()) return ResponseEntity.badRequest().body("Search query cannot be empty.");
+        
+        Pageable pageable = PageRequest.of(page, size);
+        Page<User> results = messageRepository.searchConversationPartners(user.getId(), q, pageable);
+        
+        List<UserContactDTO> dto = results.stream()
+                .map(u -> new UserContactDTO(u.getId(), u.getFullName() != null ? u.getFullName() : u.getUsername(), u.getEmail(), u.getRole() != null ? u.getRole().name() : "USER"))
+                .collect(Collectors.toList());
+        
+        return ResponseEntity.ok(new org.springframework.data.domain.PageImpl<>(dto, pageable, results.getTotalElements()));
+    }
+
+    // READ: Get all users for messaging (deprecated - use /contacts instead)
     @GetMapping("/users")
     @PreAuthorize("hasAnyRole('CLIENT', 'WORKER', 'ADMIN')")
+    @Deprecated
     public List<UserContactDTO> getAllUsersForMessaging() {
         return userRepository.findAll().stream()
-                .map(u -> new UserContactDTO(u.getId(), u.getUsername(), u.getEmail(), u.getRole() != null ? u.getRole().name() : "USER"))
+                .map(u -> new UserContactDTO(u.getId(), u.getFullName() != null ? u.getFullName() : u.getUsername(), u.getEmail(), u.getRole() != null ? u.getRole().name() : "USER"))
                 .collect(Collectors.toList());
     }
 
@@ -45,9 +86,19 @@ public class MessageController {
         message.setSender(sender);
         message.setReceiver(receiver);
         message.setContent(request.content());
+        message.setAttachmentUrl(request.attachmentUrl());
 
         Message saved = messageRepository.save(message);
-        return ResponseEntity.ok(MessageDTO.from(saved));
+        MessageDTO dto = MessageDTO.from(saved);
+
+        // Broadcast to receiver in real-time
+        messagingTemplate.convertAndSendToUser(
+            receiver.getId().toString(),
+            "/queue/messages",
+            dto
+        );
+
+        return ResponseEntity.ok(dto);
     }
 
     // READ: Get a single message by ID
@@ -59,11 +110,28 @@ public class MessageController {
         ).orElse(ResponseEntity.notFound().build());
     }
 
-    // READ: Get a conversation between two users
+    // READ: Get a conversation between two users (paginated)
     @GetMapping("/conversation")
     @PreAuthorize("hasAnyRole('CLIENT', 'WORKER', 'ADMIN')")
-    public List<MessageDTO> getConversation(@RequestParam UUID user1Id, @RequestParam UUID user2Id) {
-        return messageRepository.findConversation(user1Id, user2Id).stream()
+    public ResponseEntity<?> getConversation(@RequestParam UUID user1Id, @RequestParam UUID user2Id, 
+                                              @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        Page<Message> messages = messageRepository.findConversation(user1Id, user2Id, pageable);
+        
+        List<MessageDTO> dto = messages.getContent().stream()
+                .map(MessageDTO::from)
+                .collect(Collectors.toList());
+        
+        return ResponseEntity.ok(new org.springframework.data.domain.PageImpl<>(dto, pageable, messages.getTotalElements()));
+    }
+
+    // READ: Get a conversation between two users (legacy - backward compatibility)
+    @GetMapping("/conversation/legacy")
+    @PreAuthorize("hasAnyRole('CLIENT', 'WORKER', 'ADMIN')")
+    @Deprecated
+    public List<MessageDTO> getConversationLegacy(@RequestParam UUID user1Id, @RequestParam UUID user2Id) {
+        Pageable pageable = PageRequest.of(0, 50);
+        return messageRepository.findConversation(user1Id, user2Id, pageable).stream()
                 .map(MessageDTO::from)
                 .collect(Collectors.toList());
     }
@@ -104,7 +172,7 @@ public class MessageController {
         return messageRepository.findRecentConversations(userId).stream()
                 .map(m -> {
                     User other = m.getSender().getId().equals(userId) ? m.getReceiver() : m.getSender();
-                    return new UserContactDTO(other.getId(), other.getUsername(), other.getEmail(), 
+                    return new UserContactDTO(other.getId(), other.getFullName() != null ? other.getFullName() : other.getUsername(), other.getEmail(), 
                         other.getRole() != null ? other.getRole().name() : "USER");
                 })
                 .collect(Collectors.toList());

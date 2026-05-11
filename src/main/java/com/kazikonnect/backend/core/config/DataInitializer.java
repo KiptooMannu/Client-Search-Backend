@@ -36,22 +36,27 @@ public class DataInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        log.info("--- Starting Database Seeding ---");
+        boolean shouldSeed = false; // Set to true only if you need to wipe and re-seed the database
         
-        // Seed if no approved workers exist
-        if (workerProfileRepository.countByStatus(WorkerStatus.APPROVED) == 0) {
-            seedSkills();
-            seedAdmin();
-            seedNamedWorkers();
-            seedNamedClients();
-            seedBulkWorkers();
-            seedPendingWorkers();
-            seedBulkClients();
+        if (shouldSeed) {
+            log.info("--- Starting Database Seeding ---");
+            // Seed if no approved workers exist
+            if (workerProfileRepository.countByStatus(WorkerStatus.APPROVED) == 0) {
+                seedSkills();
+                seedAdmin();
+                seedNamedWorkers();
+                seedNamedClients();
+                seedBulkWorkers();
+                seedPendingWorkers();
+                seedBulkClients();
+            }
+            
+            // Always refresh interactions for verification
+            seedInteractions();
+            log.info("--- Database Seeding / Interaction Refresh Complete ---");
+        } else {
+            log.info("--- Database Seeding Skipped (shouldSeed = false) ---");
         }
-        
-        // Always refresh interactions for verification
-        seedInteractions();
-        log.info("--- Database Seeding / Interaction Refresh Complete ---");
     }
 
     private void seedPendingWorkers() {
@@ -104,10 +109,21 @@ public class DataInitializer implements CommandLineRunner {
         
         List<WorkerProfile> workers = new ArrayList<>(workerProfileRepository.findAll().stream()
                 .filter(w -> w.getStatus() == WorkerStatus.APPROVED && w.getUser() != null)
-                .limit(10)
+                .limit(20)
                 .collect(Collectors.toList()));
 
         JobStatus[] statuses = { JobStatus.PENDING, JobStatus.ACCEPTED, JobStatus.COMPLETED, JobStatus.REJECTED };
+
+        // 1. Seed Client Interactions
+        // 1. Seed Client Interactions
+        log.info("--- Generating 200+ Messages for stress testing ---");
+        Random random = new Random();
+        String[] keywords = {"contract", "payment", "address", "urgent", "thanks", "plumbing", "electrical", "quote", "schedule"};
+        String[] attachments = {
+            "https://res.cloudinary.com/demo/image/upload/v1/sample.jpg",
+            "https://res.cloudinary.com/demo/pdf/upload/v1/sample.pdf",
+            "https://res.cloudinary.com/demo/image/upload/v1/couple.jpg"
+        };
 
         for (int i = 0; i < Math.min(clients.size(), workers.size()); i++) {
             User client = clients.get(i);
@@ -134,21 +150,31 @@ public class DataInitializer implements CommandLineRunner {
                         .build());
             }
 
-            // 3. Message (Bi-directional conversation)
+            // 3. Message (Deep Conversation)
             if (worker.getUser() != null) {
-                messageRepository.save(Message.builder()
-                        .sender(client)
-                        .receiver(worker.getUser())
-                        .content("Hi " + worker.getFullName() + ", I'd like to hire you for a " + worker.getCategory() + " project.")
-                        .isRead(true)
-                        .build());
-                
-                messageRepository.save(Message.builder()
-                        .sender(worker.getUser())
-                        .receiver(client)
-                        .content("Hello " + client.getFullName() + ", I'm available! Let's discuss the details.")
-                        .isRead(false) // Unread message for client to see badge
-                        .build());
+                List<Message> conversation = new ArrayList<>();
+                int messageCount = 2; // Reduced for stable startup
+                for (int m = 0; m < messageCount; m++) {
+                    boolean isFromClient = m % 2 == 0;
+                    User sender = isFromClient ? client : worker.getUser();
+                    User receiver = isFromClient ? worker.getUser() : client;
+                    String word = keywords[random.nextInt(keywords.length)];
+                    String content = (isFromClient ? "Client message: " : "Worker message: ") + "Discussing " + word + " #" + m;
+                    
+                    Message msg = Message.builder()
+                            .sender(sender)
+                            .receiver(receiver)
+                            .content(content)
+                            .isRead(m < messageCount - 2) // Leave last 2 as unread
+                            .build();
+                    
+                    // Add attachment to every 5th message
+                    if (m % 5 == 0) {
+                        msg.setAttachmentUrl(attachments[random.nextInt(attachments.length)]);
+                    }
+                    conversation.add(msg);
+                }
+                messageRepository.saveAll(conversation);
             }
 
             // 4. Notification
@@ -159,6 +185,8 @@ public class DataInitializer implements CommandLineRunner {
                     .type("INFO")
                     .build());
         }
+        
+        log.info("Successfully seeded high-volume interactions.");
         
         log.info("Successfully seeded interactions for {} connections.", Math.min(clients.size(), workers.size()));
     }
@@ -237,14 +265,14 @@ public class DataInitializer implements CommandLineRunner {
                 .fullName(fullName)
                 .category(category)
                 .hourlyRate(rate)
-                .profilePictureUrl(img)
                 .bio(bio)
+                .profilePictureUrl(img)
                 .status(status)
                 .isVisible(status == WorkerStatus.APPROVED)
                 .isOnline(true)
                 .location("Nairobi, Kenya")
-                .phoneNumber("07" + (10000000 + (int)(Math.random() * 90000000)))
-                .experienceYears(3 + (int)(Math.random() * 10))
+                .phoneNumber("07" + String.format("%08d", new Random().nextInt(100000000)))
+                .experienceYears(new Random().nextInt(15) + 1)
                 .build());
 
         // Add Skills
@@ -306,12 +334,12 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     private void seedBulkWorkers() {
-        if (workerProfileRepository.count() >= 30)
+        if (workerProfileRepository.count() >= 60)
             return;
-        log.info("--- Seeding 30 Professionals ---");
+        log.info("--- Seeding 60 Professionals ---");
         String[] categories = { "Plumbing", "Electrical Wiring", "Carpentry", "Masonry", "Painting", "Interior Design",
                 "General Repairs" };
-        for (int i = 1; i <= 30; i++) {
+        for (int i = 1; i <= 60; i++) {
             String email = "worker" + i + "@kazikonnect.com";
             createWorkerStatus("pro_user_" + i, email, "Professional Worker " + i,
                     categories[i % categories.length], 20.0 + (i % 15),
@@ -322,10 +350,10 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     private void seedBulkClients() {
-        if (clientProfileRepository.count() >= 30)
+        if (clientProfileRepository.count() >= 40)
             return;
-        log.info("--- Seeding 30 Clients ---");
-        for (int i = 1; i <= 30; i++) {
+        log.info("--- Seeding 40 Clients ---");
+        for (int i = 1; i <= 40; i++) {
             createClient("client_user_" + i, "client" + i + "@kazikonnect.com", "Client " + i,
                     "Client Profile " + i, "07" + String.format("%08d", 2000 + i));
         }

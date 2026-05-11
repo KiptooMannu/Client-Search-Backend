@@ -3,6 +3,7 @@ C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\core
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\core\config\DataInitializer.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\core\config\OpenApiConfig.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\core\config\RouteViewer.java
+C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\core\config\WebSocketConfig.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\core\security\JwtAuthenticationFilter.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\core\security\JwtTokenProvider.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\core\security\SecurityConfig.java
@@ -23,6 +24,7 @@ C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\feat
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\client\ClientProfile.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\client\ClientProfileDTO.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\client\ClientProfileRepository.java
+C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\common\MediaController.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\common\Message.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\common\MessageController.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\common\MessageDTO.java

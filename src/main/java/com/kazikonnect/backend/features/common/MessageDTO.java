@@ -18,9 +18,9 @@ public record MessageDTO(
         return new MessageDTO(
             m.getId(),
             m.getSender() != null ? m.getSender().getId() : null,
-            m.getSender() != null ? m.getSender().getUsername() : null,
+            m.getSender() != null ? m.getSender().getFullName() : null,
             m.getReceiver() != null ? m.getReceiver().getId() : null,
-            m.getReceiver() != null ? m.getReceiver().getUsername() : null,
+            m.getReceiver() != null ? m.getReceiver().getFullName() : null,
             m.getContent(),
             m.getAttachmentUrl(),
             m.getSentAt(),

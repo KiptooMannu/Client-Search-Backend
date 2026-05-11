@@ -30,6 +30,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         
         String authHeader = request.getHeader("Authorization");
+        String requestPath = request.getRequestURI();
 
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             String token = authHeader.substring(7);
@@ -38,9 +39,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 String username = tokenProvider.getUsernameFromToken(token);
                 String role = tokenProvider.getRoleFromToken(token);
 
-                System.out.println("DEBUG: Extracted role from token: " + role);
+                System.out.println("✓ [JWT] Valid token for user: " + username + ", role: " + role);
                 SimpleGrantedAuthority authority = new SimpleGrantedAuthority("ROLE_" + role);
-                System.out.println("DEBUG: Assigned authority: " + authority.getAuthority());
 
                 UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
                         username, null, Collections.singletonList(authority)
@@ -48,6 +48,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 
                 authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                 SecurityContextHolder.getContext().setAuthentication(authentication);
+            } else {
+                System.out.println("✗ [JWT] Invalid or expired token for path: " + requestPath);
+            }
+        } else {
+            if (!requestPath.contains("/auth/") && !requestPath.contains("/marketplace/") && !requestPath.contains("/reviews/")) {
+                System.out.println("✗ [JWT] No Authorization header for path: " + requestPath);
             }
         }
 
