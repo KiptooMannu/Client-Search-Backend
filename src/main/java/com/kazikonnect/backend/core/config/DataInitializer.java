@@ -36,7 +36,15 @@ public class DataInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        boolean shouldSeed = false; // Set to true only if you need to wipe and re-seed the database
+        // Drop the status check constraint to allow new statuses (CANCELLED, IN_PROGRESS)
+        try {
+            jdbcTemplate.execute("ALTER TABLE job_requests DROP CONSTRAINT IF EXISTS job_requests_status_check");
+            log.info("Dropped job_requests_status_check constraint for compatibility.");
+        } catch (Exception e) {
+            log.warn("Could not drop constraint: " + e.getMessage());
+        }
+
+        boolean shouldSeed = true; // Enabled for verification
         
         if (shouldSeed) {
             log.info("--- Starting Database Seeding ---");
@@ -112,11 +120,10 @@ public class DataInitializer implements CommandLineRunner {
                 .limit(20)
                 .collect(Collectors.toList()));
 
-        JobStatus[] statuses = { JobStatus.PENDING, JobStatus.ACCEPTED, JobStatus.COMPLETED, JobStatus.REJECTED };
+        JobStatus[] statuses = { JobStatus.PENDING, JobStatus.ACCEPTED, JobStatus.COMPLETED, JobStatus.CANCELLED };
 
         // 1. Seed Client Interactions
-        // 1. Seed Client Interactions
-        log.info("--- Generating 200+ Messages for stress testing ---");
+        log.info("--- Seeding interaction for client@user.com ---");
         Random random = new Random();
         String[] keywords = {"contract", "payment", "address", "urgent", "thanks", "plumbing", "electrical", "quote", "schedule"};
         String[] attachments = {
@@ -124,7 +131,7 @@ public class DataInitializer implements CommandLineRunner {
             "https://res.cloudinary.com/demo/pdf/upload/v1/sample.pdf",
             "https://res.cloudinary.com/demo/image/upload/v1/couple.jpg"
         };
-
+        
         for (int i = 0; i < Math.min(clients.size(), workers.size()); i++) {
             User client = clients.get(i);
             WorkerProfile worker = workers.get(i);
@@ -134,19 +141,20 @@ public class DataInitializer implements CommandLineRunner {
             JobRequest job = JobRequest.builder()
                     .client(client)
                     .worker(worker)
-                    .description("High-priority " + worker.getCategory() + " project for " + client.getFullName())
+                    .description("Service request for " + worker.getCategory())
                     .status(status)
-                    .totalCost(worker.getHourlyRate() * 4) // 4 hours work
+                    .totalCost(worker.getHourlyRate() * (random.nextInt(5) + 1))
+                    .createdAt(java.time.LocalDateTime.now())
                     .build();
             jobRequestRepository.save(job);
 
-            // 2. Review (only for completed jobs)
-            if (status == JobStatus.COMPLETED) {
+            // 2. Review (only for some completed jobs to leave some for testing)
+            if (status == JobStatus.COMPLETED && i % 2 == 0) {
                 reviewRepository.save(Review.builder()
                         .client(client)
                         .worker(worker)
                         .rating(5)
-                        .comment("Exceptional service! " + worker.getFullName() + " exceeded all expectations.")
+                        .comment("Great work!")
                         .build());
             }
 

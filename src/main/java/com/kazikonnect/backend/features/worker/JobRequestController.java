@@ -19,6 +19,8 @@ public class JobRequestController {
     private final JobRequestRepository jobRequestRepository;
     private final UserRepository userRepository;
     private final WorkerProfileRepository workerProfileRepository;
+    private final com.kazikonnect.backend.features.common.NotificationRepository notificationRepository;
+    private final com.kazikonnect.backend.features.common.MessageRepository messageRepository;
     
     // READ: Get all job requests (Admin Oversight)
     @GetMapping("/all")
@@ -119,8 +121,30 @@ public class JobRequestController {
             if (!admin && !clientOwner && !workerOwner) {
                 return ResponseEntity.status(403).body("Forbidden.");
             }
+            JobStatus oldStatus = job.getStatus();
             job.setStatus(status);
-            return ResponseEntity.ok(JobRequestDTO.from(jobRequestRepository.save(job)));
+            JobRequest saved = jobRequestRepository.save(job);
+
+            // LOGIC: If worker marks as COMPLETED, notify client
+            if (status == JobStatus.COMPLETED && workerOwner && oldStatus != JobStatus.COMPLETED) {
+                // 1. Notification
+                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                        .user(job.getClient())
+                        .title("Work Completed")
+                        .message(job.getWorker().getFullName() + " has marked the job as completed. Please review and confirm.")
+                        .type("SUCCESS")
+                        .build());
+                
+                // 2. Automatic Message
+                messageRepository.save(com.kazikonnect.backend.features.common.Message.builder()
+                        .sender(actor)
+                        .receiver(job.getClient())
+                        .content("Hi " + job.getClient().getFullName() + ", I have finished the work. Looking forward to your feedback!")
+                        .isRead(false)
+                        .build());
+            }
+
+            return ResponseEntity.ok(JobRequestDTO.from(saved));
         }).orElse(ResponseEntity.notFound().build());
     }
 

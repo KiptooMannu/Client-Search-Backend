@@ -3,6 +3,9 @@ package com.kazikonnect.backend.features.worker;
 public enum JobStatus {
     PENDING,
     ACCEPTED,
+    IN_PROGRESS,
     REJECTED,
-    COMPLETED
+    COMPLETED,
+    CANCELLED,
+    REVISION
 }

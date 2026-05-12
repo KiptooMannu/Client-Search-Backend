@@ -2,6 +2,8 @@ package com.kazikonnect.backend.features.worker;
 
 import com.kazikonnect.backend.features.auth.User;
 import com.kazikonnect.backend.features.auth.UserRepository;
+import com.kazikonnect.backend.features.common.Notification;
+import com.kazikonnect.backend.features.common.NotificationRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -19,6 +21,8 @@ public class ReviewController {
     private final ReviewRepository reviewRepository;
     private final UserRepository userRepository;
     private final WorkerProfileRepository workerProfileRepository;
+    private final JobRequestRepository jobRequestRepository;
+    private final NotificationRepository notificationRepository;
 
     // CREATE: Client leaves a review for a worker
     @PostMapping
@@ -26,6 +30,7 @@ public class ReviewController {
     public ResponseEntity<?> createReview(
             @RequestParam UUID clientId,
             @RequestParam UUID workerProfileId,
+            @RequestParam(required = false) UUID jobId,
             @RequestBody Review review) {
         
         User client = userRepository.findById(clientId).orElse(null);
@@ -39,6 +44,24 @@ public class ReviewController {
         review.setWorker(worker);
 
         Review saved = reviewRepository.save(review);
+
+        // Update JobRequest if jobId is provided
+        if (jobId != null) {
+            jobRequestRepository.findById(jobId).ifPresent(job -> {
+                job.setRating(review.getRating());
+                jobRequestRepository.save(job);
+            });
+        }
+
+        // Notify Worker
+        Notification notification = Notification.builder()
+                .user(worker.getUser())
+                .title("New Review Received!")
+                .message("A client left you a " + review.getRating() + "-star review.")
+                .type("SUCCESS")
+                .build();
+        notificationRepository.save(notification);
+
         return ResponseEntity.ok(ReviewDTO.from(saved));
     }
 

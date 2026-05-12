@@ -44,6 +44,9 @@ public class JobRequest {
     @Column(name = "total_cost")
     private Double totalCost;
 
+    @Column(name = "rating")
+    private Integer rating;
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();

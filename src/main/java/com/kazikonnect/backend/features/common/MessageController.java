@@ -188,4 +188,19 @@ public class MessageController {
         messageRepository.deleteById(messageId);
         return ResponseEntity.ok("Message deleted successfully.");
     }
+
+    // Real-time: Handle typing indicators
+    @PostMapping("/typing")
+    @PreAuthorize("hasAnyRole('CLIENT', 'WORKER', 'ADMIN')")
+    public ResponseEntity<?> sendTypingIndicator(@RequestParam UUID receiverId, @RequestParam boolean typing, java.security.Principal principal) {
+        User sender = userRepository.findByUsername(principal.getName()).orElse(null);
+        if (sender == null) return ResponseEntity.status(401).build();
+
+        messagingTemplate.convertAndSendToUser(
+            receiverId.toString(),
+            "/queue/typing",
+            java.util.Map.of("senderId", sender.getId(), "typing", typing)
+        );
+        return ResponseEntity.ok().build();
+    }
 }
