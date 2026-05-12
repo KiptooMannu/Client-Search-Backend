@@ -27,6 +27,7 @@ public class ReviewController {
     // CREATE: Client leaves a review for a worker
     @PostMapping
     @PreAuthorize("hasRole('CLIENT')")
+    @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<?> createReview(
             @RequestParam UUID clientId,
             @RequestParam UUID workerProfileId,
@@ -40,12 +41,13 @@ public class ReviewController {
             return ResponseEntity.badRequest().body("Client or Worker not found.");
         }
 
+        // Ensure review is properly linked
         review.setClient(client);
         review.setWorker(worker);
 
         Review saved = reviewRepository.save(review);
 
-        // Update JobRequest if jobId is provided
+        // Update JobRequest if jobId is provided to mark it as reviewed
         if (jobId != null) {
             jobRequestRepository.findById(jobId).ifPresent(job -> {
                 job.setRating(review.getRating());

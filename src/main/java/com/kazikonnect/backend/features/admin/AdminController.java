@@ -97,9 +97,8 @@ public class AdminController {
                 .build());
 
         return ResponseEntity.ok(java.util.Map.of(
-            "message", "Worker " + worker.getFullName() + " verified and is now live!",
-            "status", "APPROVED"
-        ));
+                "message", "Worker " + worker.getFullName() + " verified and is now live!",
+                "status", "APPROVED"));
     }
 
     @PutMapping("/workers/{id}/reject")
@@ -135,18 +134,17 @@ public class AdminController {
         // Also send an actual Message so it appears in the chat
         userRepository.findById(adminId).ifPresent(adminUser -> {
             messageRepository.save(Message.builder()
-                .sender(adminUser)
-                .receiver(worker.getUser())
-                .content("System: Your profile verification was unsuccessful. Reason: " + reason)
-                .sentAt(LocalDateTime.now())
-                .isRead(false)
-                .build());
+                    .sender(adminUser)
+                    .receiver(worker.getUser())
+                    .content("System: Your profile verification was unsuccessful. Reason: " + reason)
+                    .sentAt(LocalDateTime.now())
+                    .isRead(false)
+                    .build());
         });
 
         return ResponseEntity.ok(java.util.Map.of(
-            "message", "Worker rejected. Reason: " + reason,
-            "status", "REJECTED"
-        ));
+                "message", "Worker rejected. Reason: " + reason,
+                "status", "REJECTED"));
     }
 
     @DeleteMapping("/workers/{id}")
