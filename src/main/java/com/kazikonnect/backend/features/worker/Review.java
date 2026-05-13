@@ -2,14 +2,12 @@ package com.kazikonnect.backend.features.worker;
 
 import com.kazikonnect.backend.features.auth.User;
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-@Data
+@Getter
+@Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
@@ -27,6 +25,10 @@ public class Review {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "worker_id", nullable = false)
     private WorkerProfile worker;
+    
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "job_request_id")
+    private JobRequest jobRequest;
 
     @Column(nullable = false)
     private Integer rating;

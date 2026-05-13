@@ -45,15 +45,15 @@ public class ReviewController {
         review.setClient(client);
         review.setWorker(worker);
 
-        Review saved = reviewRepository.save(review);
-
-        // Update JobRequest if jobId is provided to mark it as reviewed
+        // Link to Job if jobId is provided
         if (jobId != null) {
-            jobRequestRepository.findById(jobId).ifPresent(job -> {
-                job.setRating(review.getRating());
-                jobRequestRepository.save(job);
-            });
+            if (reviewRepository.findByJobRequestId(jobId).isPresent()) {
+                return ResponseEntity.badRequest().body("A review already exists for this job.");
+            }
+            jobRequestRepository.findById(jobId).ifPresent(review::setJobRequest);
         }
+
+        Review saved = reviewRepository.save(review);
 
         // Notify Worker
         Notification notification = Notification.builder()

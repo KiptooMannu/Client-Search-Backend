@@ -162,6 +162,18 @@ public class MessageController {
         List<Message> unread = messageRepository.findBySenderIdAndReceiverIdAndIsReadFalse(senderId, receiverId);
         unread.forEach(m -> m.setRead(true));
         messageRepository.saveAll(unread);
+
+        // Broadcast Read Receipt to the sender
+        messagingTemplate.convertAndSendToUser(
+            senderId.toString(),
+            "/queue/messages",
+            java.util.Map.of(
+                "type", "READ_RECEIPT",
+                "receiverId", receiverId,
+                "timestamp", java.time.LocalDateTime.now().toString()
+            )
+        );
+
         return ResponseEntity.ok("Conversation marked as read.");
     }
 

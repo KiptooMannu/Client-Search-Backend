@@ -26,7 +26,8 @@ public record JobRequestDTO(
             j.getStatus().name(),
             j.getCreatedAt(),
             j.getTotalCost(),
-            j.getRating()
+            j.getReview() != null ? j.getReview().getRating() : null
         );
     }
 }
+

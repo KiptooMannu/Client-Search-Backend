@@ -7,4 +7,6 @@ import java.util.UUID;
 public interface ReviewRepository extends JpaRepository<Review, UUID> {
     List<Review> findAllByWorkerId(UUID workerId);
     List<Review> findAllByClientId(UUID clientId);
+    java.util.Optional<Review> findByJobRequestId(UUID jobId);
 }
+

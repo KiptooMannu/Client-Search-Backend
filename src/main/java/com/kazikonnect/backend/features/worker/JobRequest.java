@@ -2,14 +2,12 @@ package com.kazikonnect.backend.features.worker;
 
 import com.kazikonnect.backend.features.auth.User;
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-@Data
+@Getter
+@Setter
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
@@ -44,11 +42,14 @@ public class JobRequest {
     @Column(name = "total_cost")
     private Double totalCost;
 
-    @Column(name = "rating")
-    private Integer rating;
+
+
+    @OneToOne(mappedBy = "jobRequest", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private Review review;
 
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
     }
 }
+

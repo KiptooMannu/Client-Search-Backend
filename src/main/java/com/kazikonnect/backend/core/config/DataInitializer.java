@@ -153,6 +153,7 @@ public class DataInitializer implements CommandLineRunner {
                 reviewRepository.save(Review.builder()
                         .client(client)
                         .worker(worker)
+                        .jobRequest(job) // Link to the job
                         .rating(5)
                         .comment("Great work!")
                         .build());

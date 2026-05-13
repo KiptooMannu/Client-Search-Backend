@@ -11,7 +11,8 @@ public record ReviewDTO(
     String workerName,
     Integer rating,
     String comment,
-    LocalDateTime createdAt
+    LocalDateTime createdAt,
+    UUID jobRequestId
 ) {
     public static ReviewDTO from(Review r) {
         return new ReviewDTO(
@@ -22,7 +23,8 @@ public record ReviewDTO(
             r.getWorker() != null ? r.getWorker().getFullName() : null,
             r.getRating(),
             r.getComment(),
-            r.getCreatedAt()
+            r.getCreatedAt(),
+            r.getJobRequest() != null ? r.getJobRequest().getId() : null
         );
     }
 }
