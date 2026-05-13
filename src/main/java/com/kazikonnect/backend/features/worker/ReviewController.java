@@ -50,7 +50,12 @@ public class ReviewController {
             if (reviewRepository.findByJobRequestId(jobId).isPresent()) {
                 return ResponseEntity.badRequest().body("A review already exists for this job.");
             }
-            jobRequestRepository.findById(jobId).ifPresent(review::setJobRequest);
+            jobRequestRepository.findById(jobId).ifPresent(job -> {
+                review.setJobRequest(job);
+                // Finalize the job lifecycle: COMPLETED
+                job.setStatus(JobStatus.COMPLETED);
+                jobRequestRepository.save(job);
+            });
         }
 
         Review saved = reviewRepository.save(review);
@@ -59,7 +64,7 @@ public class ReviewController {
         Notification notification = Notification.builder()
                 .user(worker.getUser())
                 .title("New Review Received!")
-                .message("A client left you a " + review.getRating() + "-star review.")
+                .message("A client left you a " + review.getRating() + "-star review and the project has been finalized.")
                 .type("SUCCESS")
                 .build();
         notificationRepository.save(notification);

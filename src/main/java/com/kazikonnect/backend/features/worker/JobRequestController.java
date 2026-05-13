@@ -122,16 +122,58 @@ public class JobRequestController {
                 return ResponseEntity.status(403).body("Forbidden.");
             }
             JobStatus oldStatus = job.getStatus();
-            job.setStatus(status);
+            JobStatus targetStatus = status;
+            // Normalize REVISION to REVISION_REQUESTED
+            if (targetStatus == JobStatus.REVISION) {
+                targetStatus = JobStatus.REVISION_REQUESTED;
+            }
+            job.setStatus(targetStatus);
             JobRequest saved = jobRequestRepository.save(job);
 
-            // LOGIC: If worker marks as COMPLETED, notify client
-            if (status == JobStatus.COMPLETED && workerOwner && oldStatus != JobStatus.COMPLETED) {
-                // 1. Notification
+            // LOGIC: If worker ACCEPTS the job
+            if (targetStatus == JobStatus.ACCEPTED && workerOwner && oldStatus != JobStatus.ACCEPTED) {
                 notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
                         .user(job.getClient())
-                        .title("Work Completed")
-                        .message(job.getWorker().getFullName() + " has marked the job as completed. Please review and confirm.")
+                        .title("Job Accepted!")
+                        .message(job.getWorker().getFullName() + " has accepted your job request.")
+                        .type("SUCCESS")
+                        .build());
+                
+                messageRepository.save(com.kazikonnect.backend.features.common.Message.builder()
+                        .sender(actor)
+                        .receiver(job.getClient())
+                        .content("I've accepted your job request! I'll get started soon.")
+                        .isRead(false)
+                        .build());
+            }
+
+            // LOGIC: If worker REJECTS the job
+            if (targetStatus == JobStatus.REJECTED && workerOwner && oldStatus != JobStatus.REJECTED) {
+                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                        .user(job.getClient())
+                        .title("Job Declined")
+                        .message(job.getWorker().getFullName() + " is unable to take your job request at this time.")
+                        .type("INFO")
+                        .build());
+            }
+
+            // LOGIC: If worker starts work (IN_PROGRESS)
+            if (targetStatus == JobStatus.IN_PROGRESS && workerOwner && oldStatus != JobStatus.IN_PROGRESS) {
+                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                        .user(job.getClient())
+                        .title("Work Started")
+                        .message(job.getWorker().getFullName() + " has started working on your project.")
+                        .type("INFO")
+                        .build());
+            }
+
+            // LOGIC: If worker marks as SUBMITTED (Work Delivered)
+            if (targetStatus == JobStatus.SUBMITTED && workerOwner && oldStatus != JobStatus.SUBMITTED) {
+                // 1. Notification to Client
+                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                        .user(job.getClient())
+                        .title("Work Delivered!")
+                        .message(job.getWorker().getFullName() + " has submitted the work. Please review and approve to release payment.")
                         .type("SUCCESS")
                         .build());
                 
@@ -139,8 +181,58 @@ public class JobRequestController {
                 messageRepository.save(com.kazikonnect.backend.features.common.Message.builder()
                         .sender(actor)
                         .receiver(job.getClient())
-                        .content("Hi " + job.getClient().getFullName() + ", I have finished the work. Looking forward to your feedback!")
+                        .content("Hi " + job.getClient().getFullName() + ", I have delivered the work. Please review it at your convenience!")
                         .isRead(false)
+                        .build());
+            }
+
+            // LOGIC: If client marks as APPROVED (Payment Release)
+            if (targetStatus == JobStatus.APPROVED && clientOwner && oldStatus != JobStatus.APPROVED) {
+                // 1. Notification to Worker
+                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                        .user(job.getWorker().getUser())
+                        .title("Work Approved & Payment Released!")
+                        .message(job.getClient().getFullName() + " has approved your work. Payment is now available in your wallet.")
+                        .type("SUCCESS")
+                        .build());
+                
+                // 2. Automatic Message
+                messageRepository.save(com.kazikonnect.backend.features.common.Message.builder()
+                        .sender(actor)
+                        .receiver(job.getWorker().getUser())
+                        .content("Hi " + job.getWorker().getFullName() + ", I've approved the work. Great job!")
+                        .isRead(false)
+                        .build());
+            }
+
+            // LOGIC: If client requests REVISION
+            if (targetStatus == JobStatus.REVISION_REQUESTED && clientOwner && oldStatus != JobStatus.REVISION_REQUESTED) {
+                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                        .user(job.getWorker().getUser())
+                        .title("Revision Requested")
+                        .message(job.getClient().getFullName() + " has requested changes to the submitted work.")
+                        .type("WARNING")
+                        .build());
+            }
+
+            // LOGIC: If client opens a DISPUTE
+            if (targetStatus == JobStatus.DISPUTED && clientOwner && oldStatus != JobStatus.DISPUTED) {
+                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                        .user(job.getWorker().getUser())
+                        .title("Dispute Opened")
+                        .message(job.getClient().getFullName() + " has opened a dispute regarding this job.")
+                        .type("DANGER")
+                        .build());
+            }
+
+            // LOGIC: If job is CANCELLED
+            if (targetStatus == JobStatus.CANCELLED && oldStatus != JobStatus.CANCELLED) {
+                User recipient = clientOwner ? job.getWorker().getUser() : job.getClient();
+                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                        .user(recipient)
+                        .title("Job Cancelled")
+                        .message("The job request has been cancelled by the " + (clientOwner ? "client" : "worker") + ".")
+                        .type("INFO")
                         .build());
             }
 

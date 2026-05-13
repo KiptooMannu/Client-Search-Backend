@@ -1,5 +1,4 @@
 com\kazikonnect\backend\features\client\ClientController.class
-com\kazikonnect\backend\core\config\CloudinaryConfig.class
 com\kazikonnect\backend\features\worker\JobRequest.class
 com\kazikonnect\backend\features\auth\User$UserBuilder.class
 com\kazikonnect\backend\features\worker\CertificationCreateDTO.class
@@ -18,6 +17,7 @@ com\kazikonnect\backend\features\auth\Auth.class
 com\kazikonnect\backend\features\worker\WorkerProfileDTO.class
 com\kazikonnect\backend\core\config\RouteViewer.class
 com\kazikonnect\backend\features\client\ClientProfileRepository.class
+com\kazikonnect\backend\features\common\MediaController.class
 com\kazikonnect\backend\features\worker\WorkHistoryDTO.class
 com\kazikonnect\backend\core\config\OpenApiConfig.class
 com\kazikonnect\backend\features\worker\Document.class
@@ -70,6 +70,7 @@ com\kazikonnect\backend\features\worker\CertificationDTO.class
 com\kazikonnect\backend\features\worker\Certification$CertificationBuilder.class
 com\kazikonnect\backend\features\auth\AuthRepository.class
 com\kazikonnect\backend\features\admin\AdminLog.class
+com\kazikonnect\backend\core\config\WebSocketConfig.class
 com\kazikonnect\backend\features\auth\UserRepository.class
 com\kazikonnect\backend\features\admin\AdminController.class
 com\kazikonnect\backend\features\auth\User.class

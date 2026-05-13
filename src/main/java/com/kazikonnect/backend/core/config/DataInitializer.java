@@ -16,6 +16,7 @@ import java.util.stream.Collectors;
 @Component
 @RequiredArgsConstructor
 @Slf4j
+@org.springframework.transaction.annotation.Transactional
 @SuppressWarnings("null")
 public class DataInitializer implements CommandLineRunner {
 
@@ -107,97 +108,126 @@ public class DataInitializer implements CommandLineRunner {
         notificationRepository.flush();
         jobRequestRepository.flush();
 
-        log.info("--- Seeding Interlinked Interactions (Jobs & Reviews) ---");
+        log.info("--- Seeding Comprehensive Marketplace Interactions ---");
 
-        List<User> clients = new ArrayList<>(userRepository.findAll().stream()
-                .filter(u -> UserRole.CLIENT.equals(u.getRole()))
-                .sorted((u1, u2) -> u1.getEmail().equals("client@user.com") ? -1 : 1) // Prioritize client@user.com
-                .limit(10)
-                .collect(Collectors.toList()));
-        
-        List<WorkerProfile> workers = new ArrayList<>(workerProfileRepository.findAll().stream()
-                .filter(w -> w.getStatus() == WorkerStatus.APPROVED && w.getUser() != null)
-                .limit(20)
-                .collect(Collectors.toList()));
+        User mainClient = userRepository.findByEmail("client@user.com").orElse(null);
+        WorkerProfile mainWorker = workerProfileRepository.findAll().stream()
+                .filter(w -> w.getUser() != null && w.getUser().getEmail().equals("worker4@kazikonnect.com"))
+                .findFirst().orElse(null);
 
-        JobStatus[] statuses = { JobStatus.PENDING, JobStatus.ACCEPTED, JobStatus.COMPLETED, JobStatus.CANCELLED };
+        if (mainClient == null || mainWorker == null) {
+            log.error("Main test accounts not found. Skipping interaction seed.");
+            return;
+        }
 
-        // 1. Seed Client Interactions
-        log.info("--- Seeding interaction for client@user.com ---");
         Random random = new Random();
-        String[] keywords = {"contract", "payment", "address", "urgent", "thanks", "plumbing", "electrical", "quote", "schedule"};
-        String[] attachments = {
-            "https://res.cloudinary.com/demo/image/upload/v1/sample.jpg",
-            "https://res.cloudinary.com/demo/pdf/upload/v1/sample.pdf",
-            "https://res.cloudinary.com/demo/image/upload/v1/couple.jpg"
+        String[] taskDescriptions = {
+            "Fix leaking pipe in the master bathroom.",
+            "Install 5 new LED ceiling lights in the living room.",
+            "Repair broken kitchen cabinet hinges.",
+            "Repaint the guest bedroom walls (Light Gray).",
+            "Emergency repair of a blown fuse box.",
+            "Install new hardwood flooring in the study room.",
+            "Design a modern open-plan kitchen layout.",
+            "Mount 65-inch TV on a concrete wall.",
+            "General maintenance of garden irrigation system."
         };
-        
-        for (int i = 0; i < Math.min(clients.size(), workers.size()); i++) {
-            User client = clients.get(i);
-            WorkerProfile worker = workers.get(i);
-            JobStatus status = statuses[i % statuses.length];
 
-            // 1. Job Request
+        JobStatus[] statuses = { 
+            JobStatus.PENDING, 
+            JobStatus.ACCEPTED, 
+            JobStatus.IN_PROGRESS, 
+            JobStatus.SUBMITTED, 
+            JobStatus.REVISION_REQUESTED, 
+            JobStatus.APPROVED, 
+            JobStatus.COMPLETED, 
+            JobStatus.DISPUTED, 
+            JobStatus.CANCELLED 
+        };
+
+        for (int i = 0; i < statuses.length; i++) {
+            JobStatus status = statuses[i];
+            
+            // 1. Create Job Request
             JobRequest job = JobRequest.builder()
-                    .client(client)
-                    .worker(worker)
-                    .description("Service request for " + worker.getCategory())
+                    .client(mainClient)
+                    .worker(mainWorker)
+                    .description(taskDescriptions[i % taskDescriptions.length])
                     .status(status)
-                    .totalCost(worker.getHourlyRate() * (random.nextInt(5) + 1))
-                    .createdAt(java.time.LocalDateTime.now())
+                    .totalCost(mainWorker.getHourlyRate() * (random.nextInt(10) + 2))
+                    .createdAt(java.time.LocalDateTime.now().minusDays(statuses.length - i))
                     .build();
             jobRequestRepository.save(job);
 
-            // 2. Review (only for some completed jobs to leave some for testing)
-            if (status == JobStatus.COMPLETED && i % 2 == 0) {
+            // 2. Add Review for Completed Job
+            if (status == JobStatus.COMPLETED) {
                 reviewRepository.save(Review.builder()
-                        .client(client)
-                        .worker(worker)
-                        .jobRequest(job) // Link to the job
+                        .client(mainClient)
+                        .worker(mainWorker)
+                        .jobRequest(job)
                         .rating(5)
-                        .comment("Great work!")
+                        .comment("Exceptional quality and professionalism. Highly recommended!")
                         .build());
             }
 
-            // 3. Message (Deep Conversation)
-            if (worker.getUser() != null) {
-                List<Message> conversation = new ArrayList<>();
-                int messageCount = 2; // Reduced for stable startup
-                for (int m = 0; m < messageCount; m++) {
-                    boolean isFromClient = m % 2 == 0;
-                    User sender = isFromClient ? client : worker.getUser();
-                    User receiver = isFromClient ? worker.getUser() : client;
-                    String word = keywords[random.nextInt(keywords.length)];
-                    String content = (isFromClient ? "Client message: " : "Worker message: ") + "Discussing " + word + " #" + m;
+            // 3. Add Messages
+            if (mainWorker.getUser() != null) {
+                String[] clientMessages = {
+                    "Hi, when can you start on the " + job.getDescription() + "?",
+                    "Is the project still on schedule?",
+                    "I noticed a small issue with the alignment.",
+                    "The work looks great so far!"
+                };
+                String[] workerMessages = {
+                    "I can start tomorrow morning at 9 AM.",
+                    "Yes, I should be done by Wednesday.",
+                    "No problem, I will fix that immediately.",
+                    "Thank you! I've just submitted the work for your approval."
+                };
+
+                for (int m = 0; m < 2; m++) {
+                    messageRepository.save(Message.builder()
+                            .sender(mainClient)
+                            .receiver(mainWorker.getUser())
+                            .content(clientMessages[random.nextInt(clientMessages.length)])
+                            .isRead(true)
+                            .build());
                     
-                    Message msg = Message.builder()
-                            .sender(sender)
-                            .receiver(receiver)
-                            .content(content)
-                            .isRead(m < messageCount - 2) // Leave last 2 as unread
-                            .build();
-                    
-                    // Add attachment to every 5th message
-                    if (m % 5 == 0) {
-                        msg.setAttachmentUrl(attachments[random.nextInt(attachments.length)]);
-                    }
-                    conversation.add(msg);
+                    messageRepository.save(Message.builder()
+                            .sender(mainWorker.getUser())
+                            .receiver(mainClient)
+                            .content(workerMessages[random.nextInt(workerMessages.length)])
+                            .isRead(i % 2 == 0) // Mix of read/unread
+                            .build());
                 }
-                messageRepository.saveAll(conversation);
             }
 
-            // 4. Notification
-            notificationRepository.save(Notification.builder()
-                    .user(worker.getUser())
-                    .title("New Hire Request")
-                    .message(client.getFullName() + " has requested your services.")
-                    .type("INFO")
-                    .build());
+            // 4. Add Notifications based on status
+            if (status == JobStatus.SUBMITTED) {
+                notificationRepository.save(Notification.builder()
+                        .user(mainClient)
+                        .title("Work Delivered!")
+                        .message(mainWorker.getFullName() + " has submitted work for approval.")
+                        .type("SUCCESS")
+                        .build());
+            } else if (status == JobStatus.DISPUTED) {
+                notificationRepository.save(Notification.builder()
+                        .user(mainClient)
+                        .title("Dispute Opened")
+                        .message("Your dispute for job #" + job.getId().toString().substring(0, 8) + " is under review.")
+                        .type("WARNING")
+                        .build());
+            } else if (status == JobStatus.REVISION_REQUESTED) {
+                notificationRepository.save(Notification.builder()
+                        .user(mainWorker.getUser())
+                        .title("Revision Requested")
+                        .message(mainClient.getFullName() + " has requested changes to the work.")
+                        .type("INFO")
+                        .build());
+            }
         }
-        
-        log.info("Successfully seeded high-volume interactions.");
-        
-        log.info("Successfully seeded interactions for {} connections.", Math.min(clients.size(), workers.size()));
+
+        log.info("Successfully seeded comprehensive interactions for test accounts.");
     }
 
     // ─── 1. Skills ──────────────────────────────────────────────────────────────
