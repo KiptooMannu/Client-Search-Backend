@@ -17,7 +17,7 @@ public class MediaController {
     private final CloudinaryService cloudinaryService;
 
     @PostMapping("/upload")
-    @PreAuthorize("hasAnyRole('CLIENT', 'WORKER', 'ADMIN')")
+    @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
     public ResponseEntity<?> uploadMedia(@RequestParam("file") MultipartFile file) {
         try {
             Map<?, ?> uploadResult = cloudinaryService.upload(file, "Kazi Konnect/media");
