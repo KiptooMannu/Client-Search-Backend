@@ -28,7 +28,8 @@ public class MessageController {
 
     // READ: Get conversation partners (paginated)
     @GetMapping("/contacts")
-    @PreAuthorize("hasAnyRole('CLIENT', 'WORKER', 'ADMIN')")
+    @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public ResponseEntity<?> getContacts(@RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size, java.security.Principal principal) {
         User user = userRepository.findByUsername(principal.getName()).orElse(null);
         if (user == null) return ResponseEntity.status(401).body("Unauthorized.");
@@ -45,7 +46,7 @@ public class MessageController {
 
     // READ: Search conversation partners
     @GetMapping("/contacts/search")
-    @PreAuthorize("hasAnyRole('CLIENT', 'WORKER', 'ADMIN')")
+    @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
     public ResponseEntity<?> searchContacts(@RequestParam String q, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size, java.security.Principal principal) {
         User user = userRepository.findByUsername(principal.getName()).orElse(null);
         if (user == null) return ResponseEntity.status(401).body("Unauthorized.");
@@ -63,7 +64,7 @@ public class MessageController {
 
     // READ: Get all users for messaging (deprecated - use /contacts instead)
     @GetMapping("/users")
-    @PreAuthorize("hasAnyRole('CLIENT', 'WORKER', 'ADMIN')")
+    @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
     @Deprecated
     public List<UserContactDTO> getAllUsersForMessaging() {
         return userRepository.findAll().stream()
@@ -73,7 +74,7 @@ public class MessageController {
 
     // CREATE: Send a message
     @PostMapping
-    @PreAuthorize("hasAnyRole('CLIENT', 'WORKER', 'ADMIN')")
+    @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
     public ResponseEntity<?> sendMessage(@RequestBody MessageRequest request) {
         User sender = userRepository.findById(request.senderId()).orElse(null);
         User receiver = userRepository.findById(request.receiverId()).orElse(null);
@@ -103,7 +104,7 @@ public class MessageController {
 
     // READ: Get a single message by ID
     @GetMapping("/{messageId}")
-    @PreAuthorize("hasAnyRole('CLIENT', 'WORKER', 'ADMIN')")
+    @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
     public ResponseEntity<?> getMessageById(@PathVariable UUID messageId) {
         return messageRepository.findById(messageId).map(m -> 
             ResponseEntity.ok(MessageDTO.from(m))
@@ -112,7 +113,7 @@ public class MessageController {
 
     // READ: Get a conversation between two users (paginated)
     @GetMapping("/conversation")
-    @PreAuthorize("hasAnyRole('CLIENT', 'WORKER', 'ADMIN')")
+    @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
     public ResponseEntity<?> getConversation(@RequestParam UUID user1Id, @RequestParam UUID user2Id, 
                                               @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size) {
         Pageable pageable = PageRequest.of(page, size);
@@ -127,7 +128,7 @@ public class MessageController {
 
     // READ: Get a conversation between two users (legacy - backward compatibility)
     @GetMapping("/conversation/legacy")
-    @PreAuthorize("hasAnyRole('CLIENT', 'WORKER', 'ADMIN')")
+    @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
     @Deprecated
     public List<MessageDTO> getConversationLegacy(@RequestParam UUID user1Id, @RequestParam UUID user2Id) {
         Pageable pageable = PageRequest.of(0, 50);
@@ -138,7 +139,8 @@ public class MessageController {
 
     // READ: Get recent chats for a user
     @GetMapping("/user/{userId}/recent")
-    @PreAuthorize("hasAnyRole('CLIENT', 'WORKER', 'ADMIN')")
+    @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public List<MessageDTO> getRecentConversations(@PathVariable UUID userId) {
         return messageRepository.findRecentConversations(userId).stream()
                 .map(MessageDTO::from)
@@ -147,7 +149,7 @@ public class MessageController {
 
     // UPDATE: Mark a message as read
     @PutMapping("/{messageId}/read")
-    @PreAuthorize("hasAnyRole('CLIENT', 'WORKER', 'ADMIN')")
+    @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
     public ResponseEntity<?> markAsRead(@PathVariable UUID messageId) {
         return messageRepository.findById(messageId).map(existing -> {
             existing.setRead(true);
@@ -156,7 +158,7 @@ public class MessageController {
     }
 
     @PutMapping("/conversation/read")
-    @PreAuthorize("hasAnyRole('CLIENT', 'WORKER', 'ADMIN')")
+    @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
     public ResponseEntity<?> markConversationAsRead(@RequestParam UUID senderId, @RequestParam UUID receiverId) {
         // Mark all messages from sender to receiver as read
         List<Message> unread = messageRepository.findBySenderIdAndReceiverIdAndIsReadFalse(senderId, receiverId);
@@ -179,7 +181,7 @@ public class MessageController {
 
     // READ: Get recent contact users (those with existing conversations)
     @GetMapping("/recent-contacts/{userId}")
-    @PreAuthorize("hasAnyRole('CLIENT', 'WORKER', 'ADMIN')")
+    @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
     public List<UserContactDTO> getRecentContacts(@PathVariable UUID userId) {
         return messageRepository.findRecentConversations(userId).stream()
                 .map(m -> {
@@ -192,7 +194,7 @@ public class MessageController {
 
     // DELETE: Delete a message
     @DeleteMapping("/{messageId}")
-    @PreAuthorize("hasAnyRole('CLIENT', 'WORKER', 'ADMIN')")
+    @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
     public ResponseEntity<?> deleteMessage(@PathVariable UUID messageId) {
         if (!messageRepository.existsById(messageId)) {
             return ResponseEntity.notFound().build();
@@ -203,7 +205,7 @@ public class MessageController {
 
     // Real-time: Handle typing indicators
     @PostMapping("/typing")
-    @PreAuthorize("hasAnyRole('CLIENT', 'WORKER', 'ADMIN')")
+    @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
     public ResponseEntity<?> sendTypingIndicator(@RequestParam UUID receiverId, @RequestParam boolean typing, java.security.Principal principal) {
         User sender = userRepository.findByUsername(principal.getName()).orElse(null);
         if (sender == null) return ResponseEntity.status(401).build();

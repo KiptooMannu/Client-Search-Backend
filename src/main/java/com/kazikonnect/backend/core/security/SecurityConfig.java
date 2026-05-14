@@ -22,10 +22,15 @@ import java.util.List;
 @EnableMethodSecurity
 public class SecurityConfig {
     
-    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final JwtTokenProvider jwtTokenProvider;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
-        this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+    public SecurityConfig(JwtTokenProvider jwtTokenProvider) {
+        this.jwtTokenProvider = jwtTokenProvider;
+    }
+
+    @Bean
+    public JwtAuthenticationFilter jwtAuthenticationFilter() {
+        return new JwtAuthenticationFilter(jwtTokenProvider);
     }
 
     @Bean
@@ -45,12 +50,20 @@ public class SecurityConfig {
                 .requestMatchers("/api/marketplace/search").permitAll()
                 .requestMatchers("/api/marketplace/**").permitAll()
                 .requestMatchers("/api/reviews/worker/**").permitAll()
-                .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                .requestMatchers(
+                    "/api/notifications/**", 
+                    "/api/messages/**", 
+                    "/api/media/**", 
+                    "/api/workers/**", 
+                    "/api/clients/**", 
+                    "/api/jobs/**"
+                ).authenticated()
+                .requestMatchers("/api/admin/**").hasAuthority("Admin")
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 .requestMatchers("/error").permitAll()
                 .anyRequest().authenticated()
             )
-            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+            .addFilterBefore(jwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }

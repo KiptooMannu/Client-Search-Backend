@@ -4,23 +4,23 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import lombok.RequiredArgsConstructor;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
-import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.Collections;
 
-@Component
-@RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider tokenProvider;
+
+    public JwtAuthenticationFilter(JwtTokenProvider tokenProvider) {
+        this.tokenProvider = tokenProvider;
+    }
 
     @Override
     protected void doFilterInternal(
@@ -35,25 +35,30 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             String token = authHeader.substring(7);
             
-            if (tokenProvider.validateToken(token)) {
-                String username = tokenProvider.getUsernameFromToken(token);
-                String role = tokenProvider.getRoleFromToken(token);
+            try {
+                if (tokenProvider.validateToken(token)) {
+                    String username = tokenProvider.getUsernameFromToken(token);
+                    String role = tokenProvider.getRoleFromToken(token);
 
-                System.out.println("✓ [JWT] Valid token for user: " + username + ", role: " + role);
-                SimpleGrantedAuthority authority = new SimpleGrantedAuthority("ROLE_" + role);
+                    if (role != null) {
+                        // Use PascalCase roles as authorities (e.g., Worker, Client, Admin)
+                        String formattedRole = role.substring(0, 1).toUpperCase() + role.substring(1).toLowerCase();
+                        SimpleGrantedAuthority authority = new SimpleGrantedAuthority(formattedRole);
+                        
+                        System.out.println("✓ [JWT] Auth successful: " + username + " [" + authority.getAuthority() + "]");
 
-                UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                        username, null, Collections.singletonList(authority)
-                );
-                
-                authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                SecurityContextHolder.getContext().setAuthentication(authentication);
-            } else {
-                System.out.println("✗ [JWT] Invalid or expired token for path: " + requestPath);
-            }
-        } else {
-            if (!requestPath.contains("/auth/") && !requestPath.contains("/marketplace/") && !requestPath.contains("/reviews/")) {
-                System.out.println("✗ [JWT] No Authorization header for path: " + requestPath);
+                        UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
+                                username, null, Collections.singletonList(authority)
+                        );
+                        
+                        authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                        SecurityContextHolder.getContext().setAuthentication(authentication);
+                    }
+                } else {
+                    System.out.println("✗ [JWT] Invalid/Expired token for: " + requestPath);
+                }
+            } catch (Exception e) {
+                System.out.println("✗ [JWT] Auth error: " + e.getMessage());
             }
         }
 

@@ -26,7 +26,7 @@ public class ReviewController {
 
     // CREATE: Client leaves a review for a worker
     @PostMapping
-    @PreAuthorize("hasRole('CLIENT')")
+    @PreAuthorize("hasAuthority('Client')")
     @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<?> createReview(
             @RequestParam UUID clientId,
@@ -82,7 +82,7 @@ public class ReviewController {
 
     // READ: Get all reviews left by a client
     @GetMapping("/client/{clientId}")
-    @PreAuthorize("hasRole('CLIENT') or hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('Client') or hasAuthority('Admin')")
     public List<ReviewDTO> getClientReviews(@PathVariable UUID clientId) {
         return reviewRepository.findAllByClientId(clientId).stream()
                 .map(ReviewDTO::from)
@@ -91,7 +91,7 @@ public class ReviewController {
 
     // UPDATE: Client edits their review
     @PutMapping("/{reviewId}")
-    @PreAuthorize("hasRole('CLIENT')")
+    @PreAuthorize("hasAuthority('Client')")
     public ResponseEntity<?> updateReview(@PathVariable UUID reviewId, @RequestBody Review updates) {
         return reviewRepository.findById(reviewId).map(existing -> {
             if (updates.getRating() != null) existing.setRating(updates.getRating());
@@ -102,7 +102,7 @@ public class ReviewController {
 
     // DELETE: Delete a review
     @DeleteMapping("/{reviewId}")
-    @PreAuthorize("hasRole('CLIENT') or hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('Client') or hasAuthority('Admin')")
     public ResponseEntity<?> deleteReview(@PathVariable UUID reviewId) {
         if (!reviewRepository.existsById(reviewId)) {
             return ResponseEntity.notFound().build();

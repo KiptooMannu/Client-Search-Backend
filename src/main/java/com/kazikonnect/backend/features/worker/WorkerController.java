@@ -27,7 +27,7 @@ public class WorkerController {
 
     // CREATE: Submit a new worker profile (updates existing if already present)
     @PostMapping("/profile")
-    @PreAuthorize("hasRole('WORKER')")
+    @PreAuthorize("hasAuthority('Worker')")
     @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<?> createProfile(@RequestBody WorkerProfileUpdateRequest updates, @RequestParam String email) {
         System.out.println("Processing CREATE request for email: " + email);
@@ -131,7 +131,8 @@ public class WorkerController {
 
     // READ: Get a single worker profile by userId
     @GetMapping("/profile/{userId}")
-    @PreAuthorize("hasRole('WORKER') or hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('Worker') or hasAuthority('Admin')")
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public ResponseEntity<?> getProfile(@PathVariable UUID userId, Principal principal) {
         var actor = userRepository.findByUsername(principal.getName()).orElse(null);
         if (actor == null) {
@@ -146,17 +147,17 @@ public class WorkerController {
     }
 
     // UPDATE: Worker edits their profile (resets to PENDING for re-verification)
-    @PutMapping("/profile/{profileId}")
-    @PreAuthorize("hasRole('WORKER')")
+    @PutMapping("/profile/{userId}")
+    @PreAuthorize("hasAuthority('Worker')")
     @org.springframework.transaction.annotation.Transactional
-    public ResponseEntity<?> updateProfile(@PathVariable UUID profileId, @RequestBody WorkerProfileUpdateRequest updates, Principal principal) {
+    public ResponseEntity<?> updateProfile(@PathVariable UUID userId, @RequestBody WorkerProfileUpdateRequest updates, Principal principal) {
         try {
-            return workerProfileRepository.findById(profileId).map(existing -> {
+            return workerProfileRepository.findByUserId(userId).map(existing -> {
                 var actor = userRepository.findByUsername(principal.getName()).orElse(null);
                 if (actor == null) {
                     return ResponseEntity.status(401).body("Unauthorized");
                 }
-                if (existing.getUser() == null || !existing.getUser().getId().equals(actor.getId())) {
+                if (existing.getUser() == null || !existing.getUser().getId().toString().equals(actor.getId().toString())) {
                     return ResponseEntity.status(403).body("Forbidden: cannot edit another worker profile.");
                 }
                 if (updates.fullName() != null) existing.setFullName(updates.fullName());
@@ -222,23 +223,23 @@ public class WorkerController {
     }
 
     // UPDATE: Upload profile picture
-    @PostMapping("/{profileId}/profile-picture")
-    @PreAuthorize("hasRole('WORKER')")
+    @PostMapping("/profile/{userId}/profile-picture")
+    @PreAuthorize("hasAuthority('Worker')")
     public ResponseEntity<?> uploadProfilePicture(
-            @PathVariable UUID profileId,
+            @PathVariable UUID userId,
             @RequestParam("file") org.springframework.web.multipart.MultipartFile file,
             Principal principal) {
         
-        return workerProfileRepository.findById(profileId).map(existing -> {
+        return workerProfileRepository.findByUserId(userId).map(existing -> {
             var actor = userRepository.findByUsername(principal.getName()).orElse(null);
             if (actor == null) {
                 return ResponseEntity.status(401).body("Unauthorized");
             }
-            if (existing.getUser() == null || !existing.getUser().getId().equals(actor.getId())) {
+            if (existing.getUser() == null || !existing.getUser().getId().toString().equals(actor.getId().toString())) {
                 return ResponseEntity.status(403).body("Forbidden: cannot edit another worker profile.");
             }
             try {
-                java.util.Map<?, ?> uploadResult = cloudinaryService.upload(file, "Kazi Konnect/profiles/" + profileId);
+                java.util.Map<?, ?> uploadResult = cloudinaryService.upload(file, "Kazi Konnect/profiles/" + userId);
                 String fileUrl = (String) uploadResult.get("secure_url");
                 existing.setProfilePictureUrl(fileUrl);
                 return ResponseEntity.ok(WorkerProfileDTO.from(workerProfileRepository.save(existing)));
@@ -249,15 +250,15 @@ public class WorkerController {
     }
 
     // DELETE: Remove profile picture
-    @DeleteMapping("/{profileId}/profile-picture")
-    @PreAuthorize("hasRole('WORKER')")
-    public ResponseEntity<?> deleteProfilePicture(@PathVariable UUID profileId, Principal principal) {
-        return workerProfileRepository.findById(profileId).map(existing -> {
+    @DeleteMapping("/profile/{userId}/profile-picture")
+    @PreAuthorize("hasAuthority('Worker')")
+    public ResponseEntity<?> deleteProfilePicture(@PathVariable UUID userId, Principal principal) {
+        return workerProfileRepository.findByUserId(userId).map(existing -> {
             var actor = userRepository.findByUsername(principal.getName()).orElse(null);
             if (actor == null) {
                 return ResponseEntity.status(401).body("Unauthorized");
             }
-            if (existing.getUser() == null || !existing.getUser().getId().equals(actor.getId())) {
+            if (existing.getUser() == null || !existing.getUser().getId().toString().equals(actor.getId().toString())) {
                 return ResponseEntity.status(403).body("Forbidden: cannot edit another worker profile.");
             }
             existing.setProfilePictureUrl(null);
@@ -266,26 +267,19 @@ public class WorkerController {
     }
 
     // UPDATE: Explicitly submit for verification
-    @PutMapping("/{profileId}/submit")
-    @PreAuthorize("hasRole('WORKER')")
-    public ResponseEntity<?> submitForVerification(@PathVariable UUID profileId, Principal principal) {
-        return submitForVerificationInternal(profileId, principal);
+    @PutMapping("/profile/{userId}/submit")
+    @PreAuthorize("hasAuthority('Worker')")
+    public ResponseEntity<?> submitForVerification(@PathVariable UUID userId, Principal principal) {
+        return submitForVerificationInternal(userId, principal);
     }
 
-    // Backward-compatible endpoint used by frontend routing style
-    @PutMapping("/profile/{profileId}/submit")
-    @PreAuthorize("hasRole('WORKER')")
-    public ResponseEntity<?> submitForVerificationFromProfileRoute(@PathVariable UUID profileId, Principal principal) {
-        return submitForVerificationInternal(profileId, principal);
-    }
-
-    private ResponseEntity<?> submitForVerificationInternal(UUID profileId, Principal principal) {
-        return workerProfileRepository.findById(profileId).map(existing -> {
+    private ResponseEntity<?> submitForVerificationInternal(UUID userId, Principal principal) {
+        return workerProfileRepository.findByUserId(userId).map(existing -> {
             var actor = userRepository.findByUsername(principal.getName()).orElse(null);
             if (actor == null) {
                 return ResponseEntity.status(401).body("Unauthorized");
             }
-            if (existing.getUser() == null || !existing.getUser().getId().equals(actor.getId())) {
+            if (existing.getUser() == null || !existing.getUser().getId().toString().equals(actor.getId().toString())) {
                 return ResponseEntity.status(403).body("Forbidden: cannot submit another worker profile.");
             }
             existing.setStatus(WorkerStatus.PENDING);
@@ -308,7 +302,7 @@ public class WorkerController {
 
     // DELETE: Worker deletes their own profile
     @DeleteMapping("/profile/{profileId}")
-    @PreAuthorize("hasRole('WORKER') or hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('Worker') or hasAuthority('Admin')")
     public ResponseEntity<?> deleteProfile(@PathVariable UUID profileId, Principal principal) {
         var actor = userRepository.findByUsername(principal.getName()).orElse(null);
         if (actor == null) {

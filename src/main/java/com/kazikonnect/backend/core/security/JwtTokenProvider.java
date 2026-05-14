@@ -14,7 +14,7 @@ public class JwtTokenProvider {
     @Value("${app.jwt.secret:base64-encoded-secret-key-at-least-256-bits-long-for-hmac-sha-algorithm}")
     private String jwtSecret;
 
-    @Value("${app.jwt.expiration:3600000}") // 1 hour
+    @Value("${app.jwt.expiration:900000}") // 15 minutes
     private long jwtExpirationInMs;
 
     public String generateToken(String username, String role) {

@@ -16,7 +16,6 @@ import java.util.stream.Collectors;
 @Component
 @RequiredArgsConstructor
 @Slf4j
-@org.springframework.transaction.annotation.Transactional
 @SuppressWarnings("null")
 public class DataInitializer implements CommandLineRunner {
 
@@ -58,11 +57,15 @@ public class DataInitializer implements CommandLineRunner {
                 seedBulkWorkers();
                 seedPendingWorkers();
                 seedBulkClients();
+                
+                // Only refresh interactions during full seed
+                seedInteractions();
             }
             
-            // Always refresh interactions for verification
-            seedInteractions();
-            log.info("--- Database Seeding / Interaction Refresh Complete ---");
+            // Always run name cleanup to ensure "Unknown" is replaced by real names
+            fixExistingUserNames();
+            
+            log.info("--- Database Seeding Complete ---");
         } else {
             log.info("--- Database Seeding Skipped (shouldSeed = false) ---");
         }
@@ -249,6 +252,7 @@ public class DataInitializer implements CommandLineRunner {
             return;
         User u = userRepository.save(User.builder()
                 .username("system_admin").email("admin@kazikonnect.com")
+                .firstName("System").secondName("Administrator")
                 .fullName("System Administrator").role(UserRole.ADMIN).build());
         authRepository.save(Auth.builder().user(u)
                 .passwordHash(passwordEncoder.encode("admin123")).isActive(true).build());
@@ -292,8 +296,13 @@ public class DataInitializer implements CommandLineRunner {
     private void createWorkerStatus(String username, String email, String fullName, String category, double rate, String img, String bio, WorkerStatus status, boolean withDocs) {
         if (userRepository.existsByEmail(email)) return;
 
+        String[] parts = fullName.split(" ", 2);
+        String fName = parts[0];
+        String sName = parts.length > 1 ? parts[1] : "";
+
         User u = userRepository.save(User.builder()
-                .username(username).email(email).fullName(fullName)
+                .username(username).email(email)
+                .firstName(fName).secondName(sName).fullName(fullName)
                 .role(UserRole.WORKER).build());
 
         authRepository.save(Auth.builder().user(u)
@@ -362,8 +371,13 @@ public class DataInitializer implements CommandLineRunner {
             String profileName, String phone) {
         if (userRepository.existsByEmail(email))
             return;
+        String[] parts = fullName.split(" ", 2);
+        String fName = parts[0];
+        String sName = parts.length > 1 ? parts[1] : "";
+
         User u = userRepository.save(User.builder()
-                .username(username).email(email).fullName(fullName)
+                .username(username).email(email)
+                .firstName(fName).secondName(sName).fullName(fullName)
                 .role(UserRole.CLIENT).build());
         authRepository.save(Auth.builder().user(u)
                 .passwordHash(passwordEncoder.encode(PASS)).isActive(true).build());
@@ -398,4 +412,15 @@ public class DataInitializer implements CommandLineRunner {
         }
     }
 
+    private void fixExistingUserNames() {
+        log.info("--- Cleaning up User names (Optimized Bulk Update) ---");
+        try {
+            int both = userRepository.updateFullNamesFromFirstAndSecond();
+            int first = userRepository.updateFullNamesFromFirstOnly();
+            int fallback = userRepository.updateFullNamesFromUsername();
+            log.info("Name cleanup results: {} fixed with full name, {} fixed with first name, {} fixed with username fallback.", both, first, fallback);
+        } catch (Exception e) {
+            log.error("Failed to run bulk name cleanup: {}", e.getMessage());
+        }
+    }
 }

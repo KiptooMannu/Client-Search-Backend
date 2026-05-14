@@ -21,10 +21,10 @@ public class JobRequestController {
     private final WorkerProfileRepository workerProfileRepository;
     private final com.kazikonnect.backend.features.common.NotificationRepository notificationRepository;
     private final com.kazikonnect.backend.features.common.MessageRepository messageRepository;
-    
+
     // READ: Get all job requests (Admin Oversight)
     @GetMapping("/all")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('Admin')")
     public ResponseEntity<?> getAllJobs() {
         return jobRequestRepository.findAll().stream()
                 .map(JobRequestDTO::from)
@@ -33,15 +33,15 @@ public class JobRequestController {
 
     // CREATE: Client requests a job
     @PostMapping("/request")
-    @PreAuthorize("hasRole('CLIENT')")
+    @PreAuthorize("hasAuthority('Client')")
     public ResponseEntity<?> createJobRequest(
             @RequestParam UUID clientId,
-            @RequestParam UUID workerProfileId,
+            @RequestParam UUID workerUserId,
             @RequestBody JobRequest jobRequest,
             Principal principal) {
-        
+
         User client = userRepository.findById(clientId).orElse(null);
-        WorkerProfile worker = workerProfileRepository.findById(workerProfileId).orElse(null);
+        WorkerProfile worker = workerProfileRepository.findByUserId(workerUserId).orElse(null);
         User actor = userRepository.findByUsername(principal.getName()).orElse(null);
 
         if (actor == null) {
@@ -59,9 +59,9 @@ public class JobRequestController {
 
         // Prevention of double hiring: Check for existing PENDING or ACCEPTED requests
         boolean alreadyRequested = jobRequestRepository.findAllByClientId(clientId).stream()
-                .anyMatch(jr -> jr.getWorker().getId().equals(workerProfileId) && 
-                         (jr.getStatus() == JobStatus.PENDING || jr.getStatus() == JobStatus.ACCEPTED));
-        
+                .anyMatch(jr -> jr.getWorker().getId().equals(worker.getId()) &&
+                        (jr.getStatus() == JobStatus.PENDING || jr.getStatus() == JobStatus.ACCEPTED));
+
         if (alreadyRequested) {
             return ResponseEntity.badRequest().body("You already have an active request with this professional.");
         }
@@ -77,12 +77,13 @@ public class JobRequestController {
 
     // READ: Get all job requests for a client
     @GetMapping("/client/{clientId}")
-    @PreAuthorize("hasRole('CLIENT') or hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('Client') or hasAuthority('Admin')")
     public ResponseEntity<?> getClientJobs(@PathVariable UUID clientId, Principal principal) {
         User actor = userRepository.findByUsername(principal.getName()).orElse(null);
-        if (actor == null) return ResponseEntity.status(401).body("Unauthorized.");
+        if (actor == null)
+            return ResponseEntity.status(401).body("Unauthorized.");
         boolean admin = actor.getRole() == com.kazikonnect.backend.features.auth.UserRole.ADMIN;
-        if (!admin && !actor.getId().equals(clientId)) {
+        if (!admin && !actor.getId().toString().equals(clientId.toString())) {
             return ResponseEntity.status(403).body("Forbidden.");
         }
         return jobRequestRepository.findAllByClientId(clientId).stream()
@@ -90,34 +91,40 @@ public class JobRequestController {
                 .collect(Collectors.collectingAndThen(Collectors.toList(), ResponseEntity::ok));
     }
 
-    // READ: Get all job requests for a worker
-    @GetMapping("/worker/{workerProfileId}")
-    @PreAuthorize("hasRole('WORKER') or hasRole('ADMIN')")
-    public ResponseEntity<?> getWorkerJobs(@PathVariable UUID workerProfileId, Principal principal) {
+    // READ: Get all job requests for a worker (using userId)
+    @GetMapping("/worker/user/{userId}")
+    @PreAuthorize("hasAuthority('Worker') or hasAuthority('Admin')")
+    public ResponseEntity<?> getWorkerJobs(@PathVariable UUID userId, Principal principal) {
         User actor = userRepository.findByUsername(principal.getName()).orElse(null);
-        if (actor == null) return ResponseEntity.status(401).body("Unauthorized.");
+        if (actor == null)
+            return ResponseEntity.status(401).body("Unauthorized.");
         boolean admin = actor.getRole() == com.kazikonnect.backend.features.auth.UserRole.ADMIN;
-        WorkerProfile worker = workerProfileRepository.findById(workerProfileId).orElse(null);
-        if (worker == null) return ResponseEntity.notFound().build();
-        if (!admin && (worker.getUser() == null || !worker.getUser().getId().equals(actor.getId()))) {
+        WorkerProfile worker = workerProfileRepository.findByUserId(userId).orElse(null);
+        if (worker == null)
+            return ResponseEntity.notFound().build();
+        if (!admin && (worker.getUser() == null
+                || !worker.getUser().getId().toString().equals(actor.getId().toString()))) {
             return ResponseEntity.status(403).body("Forbidden.");
         }
-        return jobRequestRepository.findAllByWorkerId(workerProfileId).stream()
+        return jobRequestRepository.findAllByWorkerId(worker.getId()).stream()
                 .map(JobRequestDTO::from)
                 .collect(Collectors.collectingAndThen(Collectors.toList(), ResponseEntity::ok));
     }
 
     // UPDATE: Update job status (e.g. ACCEPTED, REJECTED, COMPLETED, CANCELLED)
     @PutMapping("/{jobId}/status")
-    @PreAuthorize("hasAnyRole('CLIENT', 'WORKER', 'ADMIN')")
-    public ResponseEntity<?> updateJobStatus(@PathVariable UUID jobId, @RequestParam JobStatus status, Principal principal) {
+    @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
+    public ResponseEntity<?> updateJobStatus(@PathVariable UUID jobId, @RequestParam JobStatus status,
+            Principal principal) {
         return jobRequestRepository.findById(jobId).map(job -> {
             User actor = userRepository.findByUsername(principal.getName()).orElse(null);
-            if (actor == null) return ResponseEntity.status(401).body("Unauthorized.");
+            if (actor == null)
+                return ResponseEntity.status(401).body("Unauthorized.");
             boolean admin = actor.getRole() == com.kazikonnect.backend.features.auth.UserRole.ADMIN;
-            boolean clientOwner = job.getClient() != null && job.getClient().getId().equals(actor.getId());
+            boolean clientOwner = job.getClient() != null
+                    && job.getClient().getId().toString().equals(actor.getId().toString());
             boolean workerOwner = job.getWorker() != null && job.getWorker().getUser() != null
-                    && job.getWorker().getUser().getId().equals(actor.getId());
+                    && job.getWorker().getUser().getId().toString().equals(actor.getId().toString());
             if (!admin && !clientOwner && !workerOwner) {
                 return ResponseEntity.status(403).body("Forbidden.");
             }
@@ -138,7 +145,7 @@ public class JobRequestController {
                         .message(job.getWorker().getFullName() + " has accepted your job request.")
                         .type("SUCCESS")
                         .build());
-                
+
                 messageRepository.save(com.kazikonnect.backend.features.common.Message.builder()
                         .sender(actor)
                         .receiver(job.getClient())
@@ -173,15 +180,17 @@ public class JobRequestController {
                 notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
                         .user(job.getClient())
                         .title("Work Delivered!")
-                        .message(job.getWorker().getFullName() + " has submitted the work. Please review and approve to release payment.")
+                        .message(job.getWorker().getFullName()
+                                + " has submitted the work. Please review and approve to release payment.")
                         .type("SUCCESS")
                         .build());
-                
+
                 // 2. Automatic Message
                 messageRepository.save(com.kazikonnect.backend.features.common.Message.builder()
                         .sender(actor)
                         .receiver(job.getClient())
-                        .content("Hi " + job.getClient().getFullName() + ", I have delivered the work. Please review it at your convenience!")
+                        .content("Hi " + job.getClient().getFullName()
+                                + ", I have delivered the work. Please review it at your convenience!")
                         .isRead(false)
                         .build());
             }
@@ -192,10 +201,11 @@ public class JobRequestController {
                 notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
                         .user(job.getWorker().getUser())
                         .title("Work Approved & Payment Released!")
-                        .message(job.getClient().getFullName() + " has approved your work. Payment is now available in your wallet.")
+                        .message(job.getClient().getFullName()
+                                + " has approved your work. Payment is now available in your wallet.")
                         .type("SUCCESS")
                         .build());
-                
+
                 // 2. Automatic Message
                 messageRepository.save(com.kazikonnect.backend.features.common.Message.builder()
                         .sender(actor)
@@ -206,7 +216,8 @@ public class JobRequestController {
             }
 
             // LOGIC: If client requests REVISION
-            if (targetStatus == JobStatus.REVISION_REQUESTED && clientOwner && oldStatus != JobStatus.REVISION_REQUESTED) {
+            if (targetStatus == JobStatus.REVISION_REQUESTED && clientOwner
+                    && oldStatus != JobStatus.REVISION_REQUESTED) {
                 notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
                         .user(job.getWorker().getUser())
                         .title("Revision Requested")
@@ -231,7 +242,8 @@ public class JobRequestController {
                 notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
                         .user(recipient)
                         .title("Job Cancelled")
-                        .message("The job request has been cancelled by the " + (clientOwner ? "client" : "worker") + ".")
+                        .message("The job request has been cancelled by the " + (clientOwner ? "client" : "worker")
+                                + ".")
                         .type("INFO")
                         .build());
             }
@@ -242,12 +254,23 @@ public class JobRequestController {
 
     // DELETE: Delete a job request
     @DeleteMapping("/{jobId}")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<?> deleteJob(@PathVariable UUID jobId) {
-        if (!jobRequestRepository.existsById(jobId)) {
-            return ResponseEntity.notFound().build();
-        }
-        jobRequestRepository.deleteById(jobId);
-        return ResponseEntity.ok("Job deleted successfully.");
+    @PreAuthorize("hasAuthority('Worker') or hasAuthority('Admin')")
+    public ResponseEntity<?> deleteJob(@PathVariable UUID jobId, Principal principal) {
+        return jobRequestRepository.findById(jobId).map(job -> {
+            User actor = userRepository.findByUsername(principal.getName()).orElse(null);
+            if (actor == null)
+                return ResponseEntity.status(401).body("Unauthorized.");
+
+            boolean admin = actor.getRole() == com.kazikonnect.backend.features.auth.UserRole.ADMIN;
+            boolean workerOwner = job.getWorker() != null && job.getWorker().getUser() != null
+                    && job.getWorker().getUser().getId().toString().equals(actor.getId().toString());
+
+            if (!admin && !workerOwner) {
+                return ResponseEntity.status(403).body("Forbidden: You can only delete your own assigned jobs.");
+            }
+
+            jobRequestRepository.delete(job);
+            return ResponseEntity.ok(java.util.Map.of("message", "Job request removed successfully."));
+        }).orElse(ResponseEntity.notFound().build());
     }
 }

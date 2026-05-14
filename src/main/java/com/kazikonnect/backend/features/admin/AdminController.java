@@ -39,7 +39,7 @@ public class AdminController {
     // ==================== WORKER MANAGEMENT ====================
 
     @GetMapping("/workers/pending")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('Admin')")
     public List<WorkerProfileDTO> getPendingWorkers() {
         return workerProfileRepository.findAllByStatusWithDetails(WorkerStatus.PENDING)
                 .stream()
@@ -48,7 +48,7 @@ public class AdminController {
     }
 
     @GetMapping("/workers")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('Admin')")
     public List<WorkerProfileDTO> getAllWorkers() {
         return workerProfileRepository.findAllWithDetails()
                 .stream()
@@ -57,7 +57,7 @@ public class AdminController {
     }
 
     @PutMapping("/workers/{id}/approve")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('Admin')")
     @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<?> approveWorker(@PathVariable UUID id, @RequestParam UUID adminId) {
         WorkerProfile worker = workerProfileRepository.findById(id)
@@ -102,7 +102,7 @@ public class AdminController {
     }
 
     @PutMapping("/workers/{id}/reject")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('Admin')")
     public ResponseEntity<?> rejectWorker(@PathVariable UUID id, @RequestParam UUID adminId,
             @RequestParam String reason) {
         WorkerProfile worker = workerProfileRepository.findById(id)
@@ -148,7 +148,7 @@ public class AdminController {
     }
 
     @DeleteMapping("/workers/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('Admin')")
     public ResponseEntity<?> deleteWorkerProfile(@PathVariable UUID id) {
         if (!workerProfileRepository.existsById(id)) {
             return ResponseEntity.notFound().build();
@@ -160,7 +160,7 @@ public class AdminController {
     // ==================== CLIENT MANAGEMENT ====================
 
     @GetMapping("/clients")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('Admin')")
     public List<ClientProfileDTO> getAllClients() {
         return clientProfileRepository.findAll()
                 .stream()
@@ -169,7 +169,7 @@ public class AdminController {
     }
 
     @GetMapping("/clients/search")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('Admin')")
     public List<ClientProfileDTO> searchClients(@RequestParam(required = false) String keyword) {
         List<ClientProfile> clients;
         if (keyword != null && !keyword.isBlank()) {
@@ -184,7 +184,7 @@ public class AdminController {
     }
 
     @GetMapping("/clients/{profileId}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('Admin')")
     public ResponseEntity<ClientProfileDTO> getClientByProfileId(@PathVariable UUID profileId) {
         return clientProfileRepository.findById(profileId)
                 .map(ClientProfileDTO::from)
@@ -193,7 +193,7 @@ public class AdminController {
     }
 
     @DeleteMapping("/clients/{profileId}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('Admin')")
     public ResponseEntity<?> deleteClientProfile(@PathVariable UUID profileId) {
         if (!clientProfileRepository.existsById(profileId)) {
             return ResponseEntity.notFound().build();
@@ -205,7 +205,7 @@ public class AdminController {
     // ==================== USER MANAGEMENT ====================
 
     @GetMapping("/users")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('Admin')")
     public List<java.util.Map<String, Object>> getAllUsers() {
         return userRepository.findAll().stream().map(u -> {
             java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
@@ -222,7 +222,7 @@ public class AdminController {
     }
 
     @GetMapping("/users/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('Admin')")
     public ResponseEntity<?> getUserById(@PathVariable UUID id) {
         return userRepository.findById(id)
                 .map(ResponseEntity::ok)
@@ -230,7 +230,7 @@ public class AdminController {
     }
 
     @DeleteMapping("/users/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('Admin')")
     public ResponseEntity<?> deleteUser(@PathVariable UUID id) {
         if (!userRepository.existsById(id)) {
             return ResponseEntity.notFound().build();
@@ -240,7 +240,7 @@ public class AdminController {
     }
 
     @PutMapping("/users/{id}/suspend")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('Admin')")
     public ResponseEntity<?> suspendUser(@PathVariable UUID id) {
         if (!userRepository.existsById(id)) {
             return ResponseEntity.notFound().build();
@@ -264,7 +264,7 @@ public class AdminController {
     }
 
     @PutMapping("/users/{id}/activate")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('Admin')")
     public ResponseEntity<?> activateUser(@PathVariable UUID id) {
         if (!userRepository.existsById(id)) {
             return ResponseEntity.notFound().build();
@@ -279,7 +279,7 @@ public class AdminController {
     }
 
     @PutMapping("/users/{id}/name")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('Admin')")
     public ResponseEntity<?> updateUserName(@PathVariable UUID id, @RequestParam String fullName) {
         return userRepository.findById(id).map(user -> {
             user.setFullName(fullName);
@@ -291,7 +291,7 @@ public class AdminController {
     // ==================== ACTIVITY LOGS ====================
 
     @GetMapping("/logs")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('Admin')")
     public List<java.util.Map<String, Object>> getAdminLogs() {
         return adminLogRepository.findAll().stream()
                 .sorted(java.util.Comparator.comparing(AdminLog::getCreatedAt).reversed())

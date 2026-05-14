@@ -37,6 +37,12 @@ public class User {
     @Column(unique = true, nullable = false)
     private String email;
 
+    @Column(name = "first_name")
+    private String firstName;
+
+    @Column(name = "last_name")
+    private String secondName;
+
     @Column(name = "full_name")
     private String fullName;
 
@@ -85,6 +91,34 @@ public class User {
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
+        updateFullName();
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        updateFullName();
+    }
+
+    private void updateFullName() {
+        if (firstName != null && secondName != null && !firstName.isBlank() && !secondName.isBlank()) {
+            this.fullName = firstName + " " + secondName;
+        } else if (firstName != null && !firstName.isBlank()) {
+            this.fullName = firstName;
+        } else if (secondName != null && !secondName.isBlank()) {
+            this.fullName = secondName;
+        } else if (this.fullName == null || this.fullName.equals("Unknown")) {
+            this.fullName = username;
+        }
+    }
+
+    public String getFullName() {
+        if (fullName != null && !fullName.equals("Unknown") && !fullName.isBlank()) {
+            return fullName;
+        }
+        if (firstName != null && secondName != null && !firstName.isBlank() && !secondName.isBlank()) {
+            return firstName + " " + secondName;
+        }
+        return username != null ? username : "Unknown User";
     }
 
     @Override

@@ -9,6 +9,7 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/marketplace")
 @RequiredArgsConstructor
+@org.springframework.transaction.annotation.Transactional(readOnly = true)
 @SuppressWarnings("null")
 public class MarketplaceController {
 

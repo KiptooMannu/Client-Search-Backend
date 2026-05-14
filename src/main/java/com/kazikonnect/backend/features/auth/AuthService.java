@@ -27,7 +27,7 @@ public class AuthService {
 
     // Verification Marker: Register with 5 arguments
     @Transactional
-    public String register(String username, String email, String password, String fullName, UserRole role) {
+    public String register(String username, String email, String password, String firstName, String secondName, UserRole role) {
         if (userRepository.existsByEmail(email)) {
             throw new RuntimeException("Error: Email '" + email + "' is already in use. Please try a different email or log in.");
         }
@@ -40,9 +40,13 @@ public class AuthService {
             throw new RuntimeException("Error: Password is too short. It must be at least 8 characters long.");
         }
 
+        String fullName = firstName + " " + secondName;
+
         User user = User.builder()
                 .username(username)
                 .email(email)
+                .firstName(firstName)
+                .secondName(secondName)
                 .fullName(fullName)
                 .role(role)
                 .build();

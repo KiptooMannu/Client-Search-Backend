@@ -17,15 +17,15 @@ public class AuthController {
     @PostMapping("/register")
     @Operation(summary = "Register a new user", description = "Registers a new Client, Worker, or Admin account")
     public ResponseEntity<?> register(@RequestBody RegisterRequest request) {
-        // Verification Marker: Calling register with 5 args
         try {
             String u = request.username();
             String e = request.email();
             String p = request.password();
-            String n = request.name();
+            String f = request.firstName();
+            String l = request.secondName();
             UserRole r = request.role();
             
-            String message = authService.register(u, e, p, n, r);
+            String message = authService.register(u, e, p, f, l, r);
             return ResponseEntity.ok(message);
         } catch (Exception ex) {
             return ResponseEntity.badRequest().body(ex.getMessage());
@@ -43,5 +43,5 @@ public class AuthController {
     }
 }
 
-record RegisterRequest(String username, String email, String password, String name, UserRole role) {}
+record RegisterRequest(String username, String email, String password, String firstName, String secondName, UserRole role) {}
 record LoginRequest(String email, String password) {}
