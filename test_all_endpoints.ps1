@@ -14,6 +14,8 @@ $registerBody = @{
     username = "new_tester_" + (Get-Date -Format "mm_ss")
     email = "test_" + (Get-Date -Format "mm_ss") + "@kazikonnect.com"
     password = "password123"
+    firstName = "Test"
+    secondName = "User"
     role = "CLIENT"
 } | ConvertTo-Json
 
@@ -86,6 +88,20 @@ try {
     }
 } catch {
     Write-Host "ERROR: Document Retrieval Failed." -ForegroundColor Red
+}
+
+# 5. MESSAGING & NOTIFICATION TESTS
+Write-Host-Section "Testing Messaging & Notifications"
+try {
+    # Get unread notification count
+    $unreadCount = Invoke-RestMethod -Uri "$baseUrl/notifications/user/$($loginResponse.userId)/unread-count" -Method Get -Headers $authHeaders
+    Write-Host "✅ Notification System: User has $($unreadCount) unread notifications." -ForegroundColor Green
+
+    # Get recent chats
+    $chats = Invoke-RestMethod -Uri "$baseUrl/messages/user/$($loginResponse.userId)/recent" -Method Get -Headers $authHeaders
+    Write-Host "✅ Messaging System: Successfully retrieved $($chats.Count) recent conversations." -ForegroundColor Green
+} catch {
+    Write-Host "ERROR: Messaging or Notification Endpoints Failed." -ForegroundColor Red
 }
 
 Write-Host "`n--- All Core Operations Verified Operational ---" -ForegroundColor Green

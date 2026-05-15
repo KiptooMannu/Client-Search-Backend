@@ -12,7 +12,7 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.Collections;
+
 
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
@@ -42,13 +42,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
                     if (role != null) {
                         // Use PascalCase roles as authorities (e.g., Worker, Client, Admin)
-                        String formattedRole = role.substring(0, 1).toUpperCase() + role.substring(1).toLowerCase();
-                        SimpleGrantedAuthority authority = new SimpleGrantedAuthority(formattedRole);
+                        // This matches the @PreAuthorize("hasAuthority('Worker')") pattern
+                        String roleUpper = role.toUpperCase();
+                        String pascalRole = roleUpper.substring(0, 1).toUpperCase() + roleUpper.substring(1).toLowerCase();
+                        
+                        SimpleGrantedAuthority authority = new SimpleGrantedAuthority(pascalRole);
                         
                         System.out.println("✓ [JWT] Auth successful: " + username + " [" + authority.getAuthority() + "]");
 
                         UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(
-                                username, null, Collections.singletonList(authority)
+                                username, null, java.util.Collections.singletonList(authority)
                         );
                         
                         authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));

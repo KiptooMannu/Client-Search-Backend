@@ -100,8 +100,10 @@ public class JobRequestController {
             return ResponseEntity.status(401).body("Unauthorized.");
         boolean admin = actor.getRole() == com.kazikonnect.backend.features.auth.UserRole.ADMIN;
         WorkerProfile worker = workerProfileRepository.findByUserId(userId).orElse(null);
-        if (worker == null)
-            return ResponseEntity.notFound().build();
+        if (worker == null) {
+            // Return empty list instead of 404 to avoid frontend errors during initialization
+            return ResponseEntity.ok(new java.util.ArrayList<>());
+        }
         if (!admin && (worker.getUser() == null
                 || !worker.getUser().getId().toString().equals(actor.getId().toString()))) {
             return ResponseEntity.status(403).body("Forbidden.");

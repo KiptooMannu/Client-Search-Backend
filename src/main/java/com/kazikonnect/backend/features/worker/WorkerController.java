@@ -301,20 +301,20 @@ public class WorkerController {
     }
 
     // DELETE: Worker deletes their own profile
-    @DeleteMapping("/profile/{profileId}")
+    @DeleteMapping("/profile/user/{userId}")
     @PreAuthorize("hasAuthority('Worker') or hasAuthority('Admin')")
-    public ResponseEntity<?> deleteProfile(@PathVariable UUID profileId, Principal principal) {
+    public ResponseEntity<?> deleteProfile(@PathVariable UUID userId, Principal principal) {
         var actor = userRepository.findByUsername(principal.getName()).orElse(null);
         if (actor == null) {
             return ResponseEntity.status(401).body("Unauthorized");
         }
-        return workerProfileRepository.findById(profileId).map(existing -> {
+        return workerProfileRepository.findByUserId(userId).map(existing -> {
             boolean admin = actor.getRole() == com.kazikonnect.backend.features.auth.UserRole.ADMIN;
             boolean owner = existing.getUser() != null && existing.getUser().getId().equals(actor.getId());
             if (!admin && !owner) {
                 return ResponseEntity.status(403).body("Forbidden: cannot delete another worker profile.");
             }
-            workerProfileRepository.deleteById(profileId);
+            workerProfileRepository.delete(existing);
             return ResponseEntity.ok("Profile deleted successfully.");
         }).orElse(ResponseEntity.notFound().build());
     }

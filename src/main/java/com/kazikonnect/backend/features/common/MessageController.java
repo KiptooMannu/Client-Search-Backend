@@ -157,7 +157,7 @@ public class MessageController {
         }).orElse(ResponseEntity.notFound().build());
     }
 
-    @PutMapping("/conversation/read")
+    @PutMapping("/read-all")
     @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
     public ResponseEntity<?> markConversationAsRead(@RequestParam UUID senderId, @RequestParam UUID receiverId) {
         // Mark all messages from sender to receiver as read

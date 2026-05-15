@@ -13,7 +13,6 @@ import java.security.Principal;
 @RestController
 @RequestMapping("/api/clients")
 @RequiredArgsConstructor
-@SuppressWarnings("null")
 @Tag(name = "Client Management", description = "Endpoints for managing client profiles")
 public class ClientController {
 
@@ -22,7 +21,7 @@ public class ClientController {
 
     // CREATE: Submit a new client profile
     @PostMapping("/profile")
-    @PreAuthorize("hasRole('CLIENT')")
+    @PreAuthorize("hasAuthority('Client')")
     @Operation(summary = "Create a new client profile", description = "Creates a profile associated with a client user account")
     public ResponseEntity<?> createProfile(@RequestBody ClientProfile profile, @RequestParam String email, Principal principal) {
         var actor = userRepository.findByUsername(principal.getName()).orElse(null);
@@ -45,7 +44,7 @@ public class ClientController {
 
     // READ: Get a single client profile by userId
     @GetMapping("/profile/{userId}")
-    @PreAuthorize("hasRole('CLIENT') or hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('Client') or hasAuthority('Admin')")
     @Operation(summary = "Get client profile", description = "Retrieves a client profile by the user's UUID")
     public ResponseEntity<?> getProfile(@PathVariable UUID userId, Principal principal) {
         var actor = userRepository.findByUsername(principal.getName()).orElse(null);
@@ -61,11 +60,11 @@ public class ClientController {
     }
 
     // UPDATE: Client edits their profile
-    @PutMapping("/profile/{profileId}")
-    @PreAuthorize("hasRole('CLIENT')")
+    @PutMapping("/profile/user/{userId}")
+    @PreAuthorize("hasAuthority('Client')")
     @Operation(summary = "Update client profile", description = "Updates an existing client profile with new details")
-    public ResponseEntity<?> updateProfile(@PathVariable UUID profileId, @RequestBody ClientProfile updates, Principal principal) {
-        return clientProfileRepository.findById(profileId).map(existing -> {
+    public ResponseEntity<?> updateProfile(@PathVariable UUID userId, @RequestBody ClientProfile updates, Principal principal) {
+        return clientProfileRepository.findByUserId(userId).map(existing -> {
             var actor = userRepository.findByUsername(principal.getName()).orElse(null);
             if (actor == null) {
                 return ResponseEntity.status(401).body("Unauthorized");
@@ -82,21 +81,21 @@ public class ClientController {
     }
 
     // DELETE: Client deletes their own profile
-    @DeleteMapping("/profile/{profileId}")
-    @PreAuthorize("hasRole('CLIENT') or hasRole('ADMIN')")
-    @Operation(summary = "Delete client profile", description = "Deletes a client profile by profile ID")
-    public ResponseEntity<?> deleteProfile(@PathVariable UUID profileId, Principal principal) {
+    @DeleteMapping("/profile/user/{userId}")
+    @PreAuthorize("hasAuthority('Client') or hasAuthority('Admin')")
+    @Operation(summary = "Delete client profile", description = "Deletes a client profile by user ID")
+    public ResponseEntity<?> deleteProfile(@PathVariable UUID userId, Principal principal) {
         var actor = userRepository.findByUsername(principal.getName()).orElse(null);
         if (actor == null) {
             return ResponseEntity.status(401).body("Unauthorized");
         }
-        return clientProfileRepository.findById(profileId).map(existing -> {
+        return clientProfileRepository.findByUserId(userId).map(existing -> {
             boolean admin = actor.getRole() == com.kazikonnect.backend.features.auth.UserRole.ADMIN;
             boolean owner = existing.getUser() != null && existing.getUser().getId().equals(actor.getId());
             if (!admin && !owner) {
                 return ResponseEntity.status(403).body("Forbidden: cannot delete another client profile.");
             }
-            clientProfileRepository.deleteById(profileId);
+            clientProfileRepository.delete(existing);
             return ResponseEntity.ok("Profile deleted successfully.");
         }).orElse(ResponseEntity.notFound().build());
     }

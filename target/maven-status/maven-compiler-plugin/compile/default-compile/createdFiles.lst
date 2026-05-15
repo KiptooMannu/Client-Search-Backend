@@ -1,4 +1,5 @@
 com\kazikonnect\backend\features\client\ClientController.class
+com\kazikonnect\backend\core\config\CloudinaryConfig.class
 com\kazikonnect\backend\features\worker\JobRequest.class
 com\kazikonnect\backend\features\auth\User$UserBuilder.class
 com\kazikonnect\backend\features\worker\CertificationCreateDTO.class
