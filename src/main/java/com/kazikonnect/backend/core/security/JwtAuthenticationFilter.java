@@ -58,10 +58,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         SecurityContextHolder.getContext().setAuthentication(authentication);
                     }
                 } else {
-                    System.out.println("✗ [JWT] Invalid/Expired token for: " + requestPath);
+                    System.out.println("✗ [JWT] Invalid/Expired token for: " + requestPath + " (Validation failed)");
                 }
             } catch (Exception e) {
-                System.out.println("✗ [JWT] Auth error: " + e.getMessage());
+                System.out.println("✗ [JWT] Auth error for " + requestPath + ": " + e.getClass().getSimpleName() + " - " + e.getMessage());
+                e.printStackTrace();
             }
         }
 

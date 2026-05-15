@@ -21,7 +21,7 @@ import java.util.List;
 @EnableWebSecurity
 @EnableMethodSecurity
 public class SecurityConfig {
-    
+
     private final JwtTokenProvider jwtTokenProvider;
 
     public SecurityConfig(JwtTokenProvider jwtTokenProvider) {
@@ -41,29 +41,36 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-            .csrf(AbstractHttpConfigurer::disable)
-            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/auth/**").permitAll()
-                .requestMatchers("/ws/**").permitAll()
-                .requestMatchers("/api/marketplace/search").permitAll()
-                .requestMatchers("/api/marketplace/**").permitAll()
-                .requestMatchers("/api/reviews/worker/**").permitAll()
-                .requestMatchers(
-                    "/api/notifications/**", 
-                    "/api/messages/**", 
-                    "/api/media/**", 
-                    "/api/workers/**", 
-                    "/api/clients/**", 
-                    "/api/jobs/**"
-                ).authenticated()
-                .requestMatchers("/api/admin/**").hasAuthority("Admin")
-                .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-                .requestMatchers("/error").permitAll()
-                .anyRequest().authenticated()
-            )
-            .addFilterBefore(jwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
+                .csrf(AbstractHttpConfigurer::disable)
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/ws/**").permitAll()
+                        .requestMatchers("/api/marketplace/search").permitAll()
+                        .requestMatchers("/api/marketplace/**").permitAll()
+                        .requestMatchers("/api/reviews/worker/**").permitAll()
+                        .requestMatchers(
+                                "/api/notifications", "/api/notifications/**",
+                                "/api/messages", "/api/messages/**",
+                                "/api/media", "/api/media/**",
+                                "/api/workers", "/api/workers/**",
+                                "/api/clients", "/api/clients/**",
+                                "/api/jobs", "/api/jobs/**",
+                                "/api/settings/**")
+                        .authenticated()
+                        .requestMatchers("/api/admin/**").hasAuthority("Admin")
+                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                        .requestMatchers("/error").permitAll()
+                        .anyRequest().authenticated())
+                .exceptionHandling(exc -> exc
+                        .authenticationEntryPoint((request, response, authException) -> {
+                            response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_UNAUTHORIZED);
+                            response.setContentType("application/json");
+                            response.getWriter().write("{\"error\": \"Unauthorized\", \"message\": \""
+                                    + authException.getMessage() + "\"}");
+                        }))
+                .addFilterBefore(jwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
@@ -73,7 +80,7 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(List.of("http://localhost:4200"));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("*")); // Allow all headers including Authorization
+        configuration.setAllowedHeaders(Arrays.asList("*"));
         configuration.setExposedHeaders(List.of("Authorization", "x-auth-token"));
         configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);

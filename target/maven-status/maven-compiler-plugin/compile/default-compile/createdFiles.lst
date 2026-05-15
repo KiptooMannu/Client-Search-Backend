@@ -71,6 +71,7 @@ com\kazikonnect\backend\features\worker\CertificationDTO.class
 com\kazikonnect\backend\features\worker\Certification$CertificationBuilder.class
 com\kazikonnect\backend\features\auth\AuthRepository.class
 com\kazikonnect\backend\features\admin\AdminLog.class
+com\kazikonnect\backend\features\common\SettingsController.class
 com\kazikonnect\backend\core\config\WebSocketConfig.class
 com\kazikonnect\backend\features\auth\UserRepository.class
 com\kazikonnect\backend\features\admin\AdminController.class
