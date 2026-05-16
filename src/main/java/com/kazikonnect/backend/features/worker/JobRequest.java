@@ -12,7 +12,11 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@Table(name = "job_requests")
+@Table(name = "job_requests", indexes = {
+    @Index(name = "idx_job_client", columnList = "client_id"),
+    @Index(name = "idx_job_worker", columnList = "worker_id"),
+    @Index(name = "idx_job_status", columnList = "status")
+})
 public class JobRequest {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)

@@ -22,7 +22,9 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@Table(name = "users")
+@Table(name = "users", indexes = {
+    @Index(name = "idx_user_role", columnList = "role")
+})
 @com.fasterxml.jackson.annotation.JsonIdentityInfo(
     generator = com.fasterxml.jackson.annotation.ObjectIdGenerators.PropertyGenerator.class,
     property = "id")
