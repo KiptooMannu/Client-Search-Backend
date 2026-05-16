@@ -1,6 +1,7 @@
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\BackendApplication.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\core\config\CloudinaryConfig.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\core\config\DataInitializer.java
+C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\core\config\JwtChannelInterceptor.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\core\config\OpenApiConfig.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\core\config\RouteViewer.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\core\config\WebSocketConfig.java

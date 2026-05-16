@@ -1,6 +1,5 @@
 package com.kazikonnect.backend.features.common;
 
-import com.kazikonnect.backend.features.auth.User;
 import com.kazikonnect.backend.features.auth.UserRepository;
 import com.kazikonnect.backend.features.auth.Auth;
 import com.kazikonnect.backend.features.auth.AuthRepository;
