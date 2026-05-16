@@ -1,33 +1,36 @@
 # Stage 1: Build the application
 FROM eclipse-temurin:21-jdk-alpine AS build
+
 WORKDIR /app
 
-# Copy the maven wrapper and pom.xml first to cache dependencies
-COPY .mvn/ .mvn/
-COPY mvnw pom.xml ./
-# Make sure the wrapper is executable
-RUN chmod +x mvnw
+# Install Maven
+RUN apk add --no-cache maven
 
-# Download dependencies (this step will be cached unless pom.xml changes)
-RUN ./mvnw dependency:go-offline
+# Copy pom.xml first
+COPY pom.xml .
 
-# Copy the source code and build the application
+# Download dependencies
+RUN mvn dependency:go-offline
+
+# Copy source code
 COPY src ./src
-RUN ./mvnw clean package -DskipTests
 
-# Stage 2: Create a minimal runtime image
+# Build the application
+RUN mvn clean package -DskipTests
+
+# Stage 2: Runtime image
 FROM eclipse-temurin:21-jre-alpine
+
 WORKDIR /app
 
-# Create a non-root user for better security
+# Create non-root user
 RUN addgroup -S spring && adduser -S spring -G spring
+
 USER spring:spring
 
-# Copy the built jar from the build stage
+# Copy built jar
 COPY --from=build /app/target/*.jar app.jar
 
-# Expose the port your app runs on
 EXPOSE 8080
 
-# Run the application
 ENTRYPOINT ["java", "-jar", "app.jar"]
