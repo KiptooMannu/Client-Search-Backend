@@ -60,6 +60,7 @@ public class WorkerProfile {
     @Enumerated(EnumType.STRING)
     private WorkerStatus status = WorkerStatus.DRAFT;
 
+    @org.hibernate.annotations.BatchSize(size = 20)
     @ElementCollection
     @CollectionTable(name = "worker_locations", joinColumns = @JoinColumn(name = "worker_id"))
     @Column(name = "location_name")
