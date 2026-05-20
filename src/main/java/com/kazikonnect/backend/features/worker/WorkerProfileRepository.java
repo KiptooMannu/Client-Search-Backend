@@ -17,12 +17,14 @@ public interface WorkerProfileRepository extends JpaRepository<WorkerProfile, UU
 
        boolean existsByUser(User user);
 
-       // Marketplace search — only visible/approved workers
-       @Query("SELECT DISTINCT w FROM WorkerProfile w LEFT JOIN FETCH w.skills s " +
-                     "WHERE w.isVisible = true AND w.status = :status " +
-                     "AND (:skill IS NULL OR s.name LIKE %:skill%) " +
-                     "AND (:location IS NULL OR w.location LIKE %:location%) " +
-                     "AND (:minExp IS NULL OR w.experienceYears >= :minExp)")
+       // Marketplace search — only visible/approved workers (optimized join fetch)
+       @Query("SELECT DISTINCT w FROM WorkerProfile w " +
+              "LEFT JOIN FETCH w.user " +
+              "LEFT JOIN FETCH w.skills s " +
+              "WHERE w.isVisible = true AND w.status = :status " +
+              "AND (:skill IS NULL OR s.name LIKE %:skill%) " +
+              "AND (:location IS NULL OR w.location LIKE %:location%) " +
+              "AND (:minExp IS NULL OR w.experienceYears >= :minExp)")
        List<WorkerProfile> advancedSearch(
                      @Param("status") WorkerStatus status,
                      @Param("skill") String skill,
@@ -31,13 +33,13 @@ public interface WorkerProfileRepository extends JpaRepository<WorkerProfile, UU
 
        // Fetch by status with all collections eagerly to avoid N+1
        @Query("SELECT DISTINCT w FROM WorkerProfile w " +
-                     "LEFT JOIN FETCH w.user " +
-                     "WHERE w.status = :status")
+              "LEFT JOIN FETCH w.user " +
+              "WHERE w.status = :status")
        List<WorkerProfile> findAllByStatusWithDetails(@Param("status") WorkerStatus status);
 
        // Fetch all with collections to avoid N+1
        @Query("SELECT DISTINCT w FROM WorkerProfile w " +
-                     "LEFT JOIN FETCH w.user")
+              "LEFT JOIN FETCH w.user")
        List<WorkerProfile> findAllWithDetails();
 
        List<WorkerProfile> findAllByStatus(WorkerStatus status);

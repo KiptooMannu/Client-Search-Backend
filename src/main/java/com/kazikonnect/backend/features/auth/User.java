@@ -48,6 +48,9 @@ public class User {
     @Column(name = "full_name")
     private String fullName;
 
+    @Column(name = "profile_picture_url")
+    private String profilePictureUrl;
+
     @Enumerated(EnumType.STRING)
     private UserRole role;
 

@@ -21,12 +21,12 @@ public class MediaController {
     public ResponseEntity<?> uploadMedia(@RequestParam("file") MultipartFile file) {
         try {
             Map<?, ?> uploadResult = cloudinaryService.upload(file, "Kazi Konnect/media");
-            return ResponseEntity.ok(Map.of(
-                "url", uploadResult.get("secure_url"),
-                "publicId", uploadResult.get("public_id"),
-                "format", uploadResult.get("format"),
-                "size", uploadResult.get("bytes")
-            ));
+            java.util.Map<String, Object> response = new java.util.HashMap<>();
+            response.put("url", uploadResult.get("secure_url"));
+            response.put("publicId", uploadResult.get("public_id"));
+            response.put("format", uploadResult.get("format"));
+            response.put("size", uploadResult.get("bytes"));
+            return ResponseEntity.ok(response);
         } catch (IOException e) {
             return ResponseEntity.internalServerError().body("Failed to upload media: " + e.getMessage());
         }

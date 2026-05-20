@@ -80,6 +80,7 @@ public class WorkerProfile {
     @OneToMany(mappedBy = "worker", cascade = CascadeType.ALL, orphanRemoval = true)
     private java.util.Set<Document> documents = new java.util.HashSet<>();
 
+    @org.hibernate.annotations.BatchSize(size = 50)
     @OneToMany(mappedBy = "worker", cascade = CascadeType.ALL, orphanRemoval = true)
     private java.util.Set<Review> reviews;
 

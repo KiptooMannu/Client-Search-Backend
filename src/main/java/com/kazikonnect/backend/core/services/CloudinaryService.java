@@ -16,7 +16,10 @@ public class CloudinaryService {
 
     public Map<?, ?> upload(MultipartFile file, String folder) throws IOException {
         return cloudinary.uploader().upload(file.getBytes(), 
-            ObjectUtils.asMap("folder", folder));
+            ObjectUtils.asMap(
+                "folder", folder,
+                "resource_type", "auto"
+            ));
     }
 
     public Map<?, ?> delete(String publicId) throws IOException {

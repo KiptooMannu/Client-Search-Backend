@@ -81,7 +81,7 @@ try {
     Write-Host "INFO: Document upload requires multipart/form-data. Skipping automated binary test." -ForegroundColor Yellow
     
     if ($workers.Count -gt 0) {
-        $workerDocs = Invoke-RestMethod -Uri "$baseUrl/documents/worker/$($workers[0].id)" -Method Get -Headers $authHeaders
+        $workerDocs = Invoke-RestMethod -Uri "$baseUrl/documents/worker/user/$($workers[0].userId)" -Method Get -Headers $authHeaders
         Write-Host "SUCCESS: Worker Documents: Retrieved $($workerDocs.Count) documents for $($workers[0].fullName)." -ForegroundColor Green
     } else {
         Write-Host "INFO: No workers found to test document retrieval." -ForegroundColor Yellow

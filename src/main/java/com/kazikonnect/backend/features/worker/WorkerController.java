@@ -242,6 +242,8 @@ public class WorkerController {
                 java.util.Map<?, ?> uploadResult = cloudinaryService.upload(file, "Kazi Konnect/profiles/" + userId);
                 String fileUrl = (String) uploadResult.get("secure_url");
                 existing.setProfilePictureUrl(fileUrl);
+                actor.setProfilePictureUrl(fileUrl);
+                userRepository.save(actor);
                 return ResponseEntity.ok(WorkerProfileDTO.from(workerProfileRepository.save(existing)));
             } catch (java.io.IOException e) {
                 return ResponseEntity.internalServerError().body("Failed to upload profile picture: " + e.getMessage());
@@ -262,6 +264,8 @@ public class WorkerController {
                 return ResponseEntity.status(403).body("Forbidden: cannot edit another worker profile.");
             }
             existing.setProfilePictureUrl(null);
+            actor.setProfilePictureUrl(null);
+            userRepository.save(actor);
             return ResponseEntity.ok(WorkerProfileDTO.from(workerProfileRepository.save(existing)));
         }).orElse(ResponseEntity.notFound().build());
     }

@@ -119,10 +119,11 @@ public class AuthService {
             auth.getUser().getUsername(), 
             auth.getUser().getEmail(),
             name,
-            auth.getUser().getRole().name()
+            auth.getUser().getRole().name(),
+            auth.getUser().getProfilePictureUrl()
         );
     }
 }
 
 
-record AuthResponse(String accessToken, String refreshToken, String userId, String username, String email, String name, String role) {}
+record AuthResponse(String accessToken, String refreshToken, String userId, String username, String email, String name, String role, String profilePictureUrl) {}

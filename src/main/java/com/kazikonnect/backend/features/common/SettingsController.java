@@ -21,7 +21,7 @@ public class SettingsController {
     private final AuthRepository authRepository;
     private final PasswordEncoder passwordEncoder;
 
-    // UPDATE: Update profile name
+    // UPDATE: Update profile name and/or avatar
     @PutMapping("/profile")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<?> updateProfile(@RequestBody Map<String, String> updates, Principal principal) {
@@ -33,11 +33,19 @@ public class SettingsController {
                 String[] parts = newName.split(" ", 2);
                 if (parts.length > 0) user.setFirstName(parts[0]);
                 if (parts.length > 1) user.setSecondName(parts[1]);
-                
-                userRepository.save(user);
-                return ResponseEntity.ok(Map.of("message", "Profile updated successfully", "name", user.getFullName()));
             }
-            return ResponseEntity.badRequest().body("Name cannot be empty.");
+            
+            String profilePictureUrl = updates.get("profilePictureUrl");
+            if (profilePictureUrl != null) {
+                user.setProfilePictureUrl(profilePictureUrl);
+            }
+            
+            userRepository.save(user);
+            return ResponseEntity.ok(Map.of(
+                "message", "Profile updated successfully", 
+                "name", user.getFullName(),
+                "profilePictureUrl", user.getProfilePictureUrl() != null ? user.getProfilePictureUrl() : ""
+            ));
         }).orElse(ResponseEntity.status(401).build());
     }
 

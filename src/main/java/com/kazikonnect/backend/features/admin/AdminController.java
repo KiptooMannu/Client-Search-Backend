@@ -207,9 +207,9 @@ public class AdminController {
     @GetMapping("/users")
     @PreAuthorize("hasAuthority('Admin')")
     public List<java.util.Map<String, Object>> getAllUsers() {
-        return userRepository.findAll().stream().map(u -> {
+        return userRepository.findAllWithAuth().stream().map(u -> {
             java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
-            boolean isActive = authRepository.findByUserId(u.getId()).map(a -> a.isActive()).orElse(true);
+            boolean isActive = u.getAuth() != null ? u.getAuth().isActive() : true;
             m.put("id", u.getId());
             m.put("username", u.getUsername());
             m.put("email", u.getEmail());

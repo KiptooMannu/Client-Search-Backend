@@ -23,7 +23,7 @@ try {
 
     Write-Host "--- Testing Media Upload ---" -ForegroundColor Cyan
     # Create a dummy file for testing
-    "Test content" | Out-File "test_upload.txt"
+    "Test content" | Out-File "test_upload.txt" -Encoding ascii
     $mediaRes = curl.exe -X POST "$baseUrl/media/upload" `
         -H "Authorization: Bearer $token" `
         -F "file=@test_upload.txt"

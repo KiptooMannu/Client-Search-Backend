@@ -81,7 +81,9 @@ com\kazikonnect\backend\features\auth\RefreshToken.class
 com\kazikonnect\backend\features\auth\RefreshToken$RefreshTokenBuilder.class
 com\kazikonnect\backend\features\worker\JobRequest$JobRequestBuilder.class
 com\kazikonnect\backend\features\worker\JobRequestDTO.class
+com\kazikonnect\backend\features\common\HealthController.class
 com\kazikonnect\backend\features\worker\WorkHistory$WorkHistoryBuilder.class
 com\kazikonnect\backend\features\worker\Review.class
 com\kazikonnect\backend\features\worker\Skill$SkillBuilder.class
+com\kazikonnect\backend\core\config\JwtChannelInterceptor.class
 com\kazikonnect\backend\features\worker\Certification.class
