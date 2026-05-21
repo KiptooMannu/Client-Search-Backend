@@ -2,14 +2,17 @@ package com.kazikonnect.backend.features.common;
 
 import com.kazikonnect.backend.features.auth.User;
 import com.kazikonnect.backend.features.auth.UserRepository;
+import com.kazikonnect.backend.features.auth.UserRole;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import java.security.Principal;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -30,7 +33,7 @@ public class MessageController {
     @GetMapping("/contacts")
     @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
-    public ResponseEntity<?> getContacts(@RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size, java.security.Principal principal) {
+    public ResponseEntity<?> getContacts(@RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size, Principal principal) {
         User user = userRepository.findByUsername(principal.getName()).orElse(null);
         if (user == null) return ResponseEntity.status(401).body("Unauthorized.");
         
@@ -47,7 +50,7 @@ public class MessageController {
     // READ: Search conversation partners
     @GetMapping("/contacts/search")
     @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
-    public ResponseEntity<?> searchContacts(@RequestParam String q, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size, java.security.Principal principal) {
+    public ResponseEntity<?> searchContacts(@RequestParam String q, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size, Principal principal) {
         User user = userRepository.findByUsername(principal.getName()).orElse(null);
         if (user == null) return ResponseEntity.status(401).body("Unauthorized.");
         if (q == null || q.trim().isEmpty()) return ResponseEntity.badRequest().body("Search query cannot be empty.");
@@ -64,7 +67,7 @@ public class MessageController {
 
     // READ: Get all users for messaging (deprecated - use /contacts instead)
     @GetMapping("/users")
-    @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
+    @PreAuthorize("hasAuthority('Admin')")
     @Deprecated
     public List<UserContactDTO> getAllUsersForMessaging() {
         return userRepository.findAll().stream()
@@ -75,7 +78,14 @@ public class MessageController {
     // CREATE: Send a message
     @PostMapping
     @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
-    public ResponseEntity<?> sendMessage(@RequestBody MessageRequest request) {
+    public ResponseEntity<?> sendMessage(@RequestBody MessageRequest request, Principal principal) {
+        User actor = userRepository.findByUsername(principal.getName()).orElse(null);
+        if (actor == null) return ResponseEntity.status(401).body("Unauthorized.");
+        
+        if (!actor.getId().equals(request.senderId()) && actor.getRole() != UserRole.ADMIN) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Forbidden: Cannot spoof message sender.");
+        }
+
         User sender = userRepository.findById(request.senderId()).orElse(null);
         User receiver = userRepository.findById(request.receiverId()).orElse(null);
 
@@ -105,17 +115,35 @@ public class MessageController {
     // READ: Get a single message by ID
     @GetMapping("/{messageId}")
     @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
-    public ResponseEntity<?> getMessageById(@PathVariable UUID messageId) {
-        return messageRepository.findById(messageId).map(m -> 
-            ResponseEntity.ok(MessageDTO.from(m))
-        ).orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<?> getMessageById(@PathVariable UUID messageId, Principal principal) {
+        User actor = userRepository.findByUsername(principal.getName()).orElse(null);
+        if (actor == null) return ResponseEntity.status(401).body("Unauthorized.");
+
+        return messageRepository.findById(messageId).map(m -> {
+            boolean isAdmin = actor.getRole() == UserRole.ADMIN;
+            boolean isParticipant = (m.getSender() != null && m.getSender().getId().equals(actor.getId())) ||
+                                    (m.getReceiver() != null && m.getReceiver().getId().equals(actor.getId()));
+            if (!isAdmin && !isParticipant) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Forbidden: Access denied.");
+            }
+            return ResponseEntity.ok(MessageDTO.from(m));
+        }).orElse(ResponseEntity.notFound().build());
     }
 
     // READ: Get a conversation between two users (paginated)
     @GetMapping("/conversation")
     @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
     public ResponseEntity<?> getConversation(@RequestParam UUID user1Id, @RequestParam UUID user2Id, 
-                                              @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size) {
+                                              @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "50") int size, Principal principal) {
+        User actor = userRepository.findByUsername(principal.getName()).orElse(null);
+        if (actor == null) return ResponseEntity.status(401).body("Unauthorized.");
+        
+        boolean isAdmin = actor.getRole() == UserRole.ADMIN;
+        boolean isParticipant = actor.getId().equals(user1Id) || actor.getId().equals(user2Id);
+        if (!isAdmin && !isParticipant) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Forbidden: Access denied.");
+        }
+
         Pageable pageable = PageRequest.of(page, size);
         Page<Message> messages = messageRepository.findConversation(user1Id, user2Id, pageable);
         
@@ -130,28 +158,52 @@ public class MessageController {
     @GetMapping("/conversation/legacy")
     @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
     @Deprecated
-    public List<MessageDTO> getConversationLegacy(@RequestParam UUID user1Id, @RequestParam UUID user2Id) {
+    public ResponseEntity<?> getConversationLegacy(@RequestParam UUID user1Id, @RequestParam UUID user2Id, Principal principal) {
+        User actor = userRepository.findByUsername(principal.getName()).orElse(null);
+        if (actor == null) return ResponseEntity.status(401).body("Unauthorized.");
+        
+        boolean isAdmin = actor.getRole() == UserRole.ADMIN;
+        boolean isParticipant = actor.getId().equals(user1Id) || actor.getId().equals(user2Id);
+        if (!isAdmin && !isParticipant) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Forbidden: Access denied.");
+        }
+
         Pageable pageable = PageRequest.of(0, 50);
-        return messageRepository.findConversation(user1Id, user2Id, pageable).stream()
+        List<MessageDTO> list = messageRepository.findConversation(user1Id, user2Id, pageable).stream()
                 .map(MessageDTO::from)
                 .collect(Collectors.toList());
+        return ResponseEntity.ok(list);
     }
 
     // READ: Get recent chats for a user
     @GetMapping("/user/{userId}/recent")
     @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
-    public List<MessageDTO> getRecentConversations(@PathVariable UUID userId) {
-        return messageRepository.findRecentConversations(userId).stream()
+    public ResponseEntity<?> getRecentConversations(@PathVariable UUID userId, Principal principal) {
+        User actor = userRepository.findByUsername(principal.getName()).orElse(null);
+        if (actor == null) return ResponseEntity.status(401).body("Unauthorized.");
+        
+        if (actor.getRole() != UserRole.ADMIN && !actor.getId().equals(userId)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Forbidden: Access denied.");
+        }
+
+        List<MessageDTO> list = messageRepository.findRecentConversations(userId).stream()
                 .map(MessageDTO::from)
                 .collect(Collectors.toList());
+        return ResponseEntity.ok(list);
     }
 
     // UPDATE: Mark a message as read
     @PutMapping("/{messageId}/read")
     @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
-    public ResponseEntity<?> markAsRead(@PathVariable UUID messageId) {
+    public ResponseEntity<?> markAsRead(@PathVariable UUID messageId, Principal principal) {
+        User actor = userRepository.findByUsername(principal.getName()).orElse(null);
+        if (actor == null) return ResponseEntity.status(401).body("Unauthorized.");
+
         return messageRepository.findById(messageId).map(existing -> {
+            if (existing.getReceiver() == null || !existing.getReceiver().getId().equals(actor.getId())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Forbidden: Cannot mark other's message as read.");
+            }
             existing.setRead(true);
             return ResponseEntity.ok(MessageDTO.from(messageRepository.save(existing)));
         }).orElse(ResponseEntity.notFound().build());
@@ -159,7 +211,14 @@ public class MessageController {
 
     @PutMapping("/conversation/read")
     @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
-    public ResponseEntity<?> markConversationAsRead(@RequestParam UUID senderId, @RequestParam UUID receiverId) {
+    public ResponseEntity<?> markConversationAsRead(@RequestParam UUID senderId, @RequestParam UUID receiverId, Principal principal) {
+        User actor = userRepository.findByUsername(principal.getName()).orElse(null);
+        if (actor == null) return ResponseEntity.status(401).body("Unauthorized.");
+        
+        if (!actor.getId().equals(receiverId)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Forbidden: Cannot mark conversation as read for another user.");
+        }
+
         // Mark all messages from sender to receiver as read
         List<Message> unread = messageRepository.findBySenderIdAndReceiverIdAndIsReadFalse(senderId, receiverId);
         unread.forEach(m -> m.setRead(true));
@@ -182,31 +241,47 @@ public class MessageController {
     // READ: Get recent contact users (those with existing conversations)
     @GetMapping("/recent-contacts/{userId}")
     @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
-    public List<UserContactDTO> getRecentContacts(@PathVariable UUID userId) {
-        return messageRepository.findRecentConversations(userId).stream()
+    public ResponseEntity<?> getRecentContacts(@PathVariable UUID userId, Principal principal) {
+        User actor = userRepository.findByUsername(principal.getName()).orElse(null);
+        if (actor == null) return ResponseEntity.status(401).body("Unauthorized.");
+        
+        if (actor.getRole() != UserRole.ADMIN && !actor.getId().equals(userId)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Forbidden: Access denied.");
+        }
+
+        List<UserContactDTO> list = messageRepository.findRecentConversations(userId).stream()
                 .map(m -> {
                     User other = m.getSender().getId().equals(userId) ? m.getReceiver() : m.getSender();
                     return new UserContactDTO(other.getId(), other.getFullName() != null ? other.getFullName() : other.getUsername(), other.getEmail(), 
                         other.getRole() != null ? other.getRole().name() : "USER");
                 })
                 .collect(Collectors.toList());
+        return ResponseEntity.ok(list);
     }
 
     // DELETE: Delete a message
     @DeleteMapping("/{messageId}")
     @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
-    public ResponseEntity<?> deleteMessage(@PathVariable UUID messageId) {
-        if (!messageRepository.existsById(messageId)) {
-            return ResponseEntity.notFound().build();
-        }
-        messageRepository.deleteById(messageId);
-        return ResponseEntity.ok("Message deleted successfully.");
+    public ResponseEntity<?> deleteMessage(@PathVariable UUID messageId, Principal principal) {
+        User actor = userRepository.findByUsername(principal.getName()).orElse(null);
+        if (actor == null) return ResponseEntity.status(401).body("Unauthorized.");
+
+        return messageRepository.findById(messageId).map(m -> {
+            boolean isAdmin = actor.getRole() == UserRole.ADMIN;
+            boolean isParticipant = (m.getSender() != null && m.getSender().getId().equals(actor.getId())) ||
+                                    (m.getReceiver() != null && m.getReceiver().getId().equals(actor.getId()));
+            if (!isAdmin && !isParticipant) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Forbidden: Access denied.");
+            }
+            messageRepository.delete(m);
+            return ResponseEntity.ok("Message deleted successfully.");
+        }).orElse(ResponseEntity.notFound().build());
     }
 
     // Real-time: Handle typing indicators
     @PostMapping("/typing")
     @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
-    public ResponseEntity<?> sendTypingIndicator(@RequestParam UUID receiverId, @RequestParam boolean typing, java.security.Principal principal) {
+    public ResponseEntity<?> sendTypingIndicator(@RequestParam UUID receiverId, @RequestParam boolean typing, Principal principal) {
         User sender = userRepository.findByUsername(principal.getName()).orElse(null);
         if (sender == null) return ResponseEntity.status(401).build();
 

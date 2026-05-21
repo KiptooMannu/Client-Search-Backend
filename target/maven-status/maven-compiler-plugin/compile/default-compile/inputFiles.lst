@@ -1,4 +1,5 @@
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\BackendApplication.java
+C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\core\config\AcceptedStatusModifierAdvice.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\core\config\CloudinaryConfig.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\core\config\DataInitializer.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\core\config\JwtChannelInterceptor.java

@@ -62,6 +62,7 @@ com\kazikonnect\backend\features\worker\Review$ReviewBuilder.class
 com\kazikonnect\backend\features\client\ClientProfileDTO.class
 com\kazikonnect\backend\features\worker\WorkerStatus.class
 com\kazikonnect\backend\features\worker\Document$DocumentBuilder.class
+com\kazikonnect\backend\core\config\AcceptedStatusModifierAdvice.class
 com\kazikonnect\backend\features\common\NotificationRepository.class
 com\kazikonnect\backend\features\worker\Availability.class
 com\kazikonnect\backend\core\security\JwtTokenProvider.class
