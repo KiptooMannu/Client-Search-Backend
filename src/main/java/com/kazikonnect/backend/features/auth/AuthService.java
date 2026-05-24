@@ -11,6 +11,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -24,6 +25,7 @@ public class AuthService {
     private final ClientProfileRepository clientProfileRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
+    private final EmailService emailService;
 
     // Verification Marker: Register with 5 arguments
     @Transactional
@@ -122,6 +124,64 @@ public class AuthService {
             auth.getUser().getRole().name(),
             auth.getUser().getProfilePictureUrl()
         );
+    }
+
+    @Transactional
+    public void initializePasswordReset(String email) {
+        User user = userRepository.findByEmail(email)
+            .orElseThrow(() -> new RuntimeException("Error: No account found for this email. Please register first."));
+        
+        String resetToken = java.util.UUID.randomUUID().toString();
+        long expiryTime = System.currentTimeMillis() + (60 * 60 * 1000); // 1 hour expiry
+        
+        // Store token in session/cache (simplified for now - stores in memory)
+        // In production, use Redis or database table for persistence
+        RESET_TOKENS.put(resetToken, new PasswordResetToken(user.getId(), expiryTime));
+        
+        // Send email with reset link
+        emailService.sendPasswordResetEmail(email, resetToken);
+    }
+
+    @Transactional
+    public void resetPassword(String resetToken, String newPassword) {
+        if (newPassword == null || newPassword.length() < 8) {
+            throw new RuntimeException("Error: Password must be at least 8 characters long.");
+        }
+
+        PasswordResetToken tokenData = RESET_TOKENS.get(resetToken);
+        if (tokenData == null) {
+            throw new RuntimeException("Error: Invalid or expired reset token.");
+        }
+
+        if (System.currentTimeMillis() > tokenData.expiryTime) {
+            RESET_TOKENS.remove(resetToken);
+            throw new RuntimeException("Error: Reset token has expired. Please request a new one.");
+        }
+
+        User user = userRepository.findById(tokenData.userId)
+            .orElseThrow(() -> new RuntimeException("Error: User not found."));
+
+        Auth auth = authRepository.findByUserId(user.getId())
+            .orElseThrow(() -> new RuntimeException("Error: Auth record not found."));
+
+        auth.setPasswordHash(new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder().encode(newPassword));
+        authRepository.save(auth);
+
+        // Invalidate token after use
+        RESET_TOKENS.remove(resetToken);
+    }
+
+    // In-memory token storage (for demo - use Redis/DB in production)
+    private static final java.util.Map<String, PasswordResetToken> RESET_TOKENS = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private static class PasswordResetToken {
+        UUID userId;
+        long expiryTime;
+        
+        PasswordResetToken(UUID userId, long expiryTime) {
+            this.userId = userId;
+            this.expiryTime = expiryTime;
+        }
     }
 }
 

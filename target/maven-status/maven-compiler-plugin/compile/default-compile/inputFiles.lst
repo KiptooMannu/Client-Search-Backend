@@ -6,6 +6,7 @@ C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\core
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\core\config\OpenApiConfig.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\core\config\RouteViewer.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\core\config\WebSocketConfig.java
+C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\core\exception\GlobalExceptionHandler.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\core\security\JwtAuthenticationFilter.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\core\security\JwtTokenProvider.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\core\security\SecurityConfig.java
@@ -17,6 +18,7 @@ C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\feat
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\auth\AuthController.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\auth\AuthRepository.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\auth\AuthService.java
+C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\auth\EmailService.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\auth\RefreshToken.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\auth\RefreshTokenRepository.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\auth\User.java

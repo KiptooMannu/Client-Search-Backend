@@ -19,7 +19,7 @@ import java.util.stream.Collectors;
 @SuppressWarnings("null")
 public class DataInitializer implements CommandLineRunner {
 
-    private final SkillRepository skillRepository;
+    private final Optional<SkillRepository> skillRepository;
     private final UserRepository userRepository;
     private final AuthRepository authRepository;
     private final ClientProfileRepository clientProfileRepository;
@@ -235,13 +235,14 @@ public class DataInitializer implements CommandLineRunner {
 
     // ─── 1. Skills ──────────────────────────────────────────────────────────────
     private void seedSkills() {
-        if (skillRepository.count() > 0)
+        if (!skillRepository.isPresent() || skillRepository.get().count() > 0)
             return;
+        SkillRepository repo = skillRepository.get();
         List<String> names = List.of(
                 "Plumbing", "Electrical Wiring", "Carpentry", "Masonry",
                 "Painting", "HVAC Installation", "Interior Design", "Roofing",
                 "Landscape Architecture", "Welding", "Tiling", "General Repairs");
-        names.forEach(n -> skillRepository.save(Skill.builder().name(n).build()));
+        names.forEach(n -> repo.save(Skill.builder().name(n).build()));
         log.info("Seeded {} skills.", names.size());
     }
 
@@ -324,7 +325,8 @@ public class DataInitializer implements CommandLineRunner {
                 .build());
 
         // Add Skills
-        Set<Skill> skills = skillRepository.findAll().stream().limit(3).collect(Collectors.toSet());
+        Set<Skill> skills = skillRepository.isPresent() ? 
+            skillRepository.get().findAll().stream().limit(3).collect(Collectors.toSet()) : new java.util.HashSet<>();
         profile.setSkills(skills);
         workerProfileRepository.save(profile);
 

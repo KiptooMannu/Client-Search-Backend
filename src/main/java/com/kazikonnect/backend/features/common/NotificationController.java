@@ -1,7 +1,6 @@
 package com.kazikonnect.backend.features.common;
 
 import com.kazikonnect.backend.features.auth.UserRepository;
-import com.kazikonnect.backend.features.auth.UserRole;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -9,13 +8,14 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import java.security.Principal;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/notifications")
 @RequiredArgsConstructor
-@SuppressWarnings("null")
+
 public class NotificationController {
 
     private final NotificationRepository notificationRepository;
@@ -50,7 +50,7 @@ public class NotificationController {
     @PutMapping("/{notificationId}/read")
     @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
     public ResponseEntity<?> markAsRead(@PathVariable UUID notificationId, Principal principal) {
-        return notificationRepository.findById(notificationId).map(existing -> {
+        return notificationRepository.findById(Objects.requireNonNull(notificationId)).map(existing -> {
             if (existing.getUser() != null && !isAuthorized(existing.getUser().getId(), principal)) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Forbidden: Access denied.");
             }
@@ -80,7 +80,7 @@ public class NotificationController {
     @DeleteMapping("/{notificationId}")
     @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
     public ResponseEntity<?> deleteNotification(@PathVariable UUID notificationId, Principal principal) {
-        return notificationRepository.findById(notificationId).map(existing -> {
+        return notificationRepository.findById(Objects.requireNonNull(notificationId)).map(existing -> {
             if (existing.getUser() != null && !isAuthorized(existing.getUser().getId(), principal)) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Forbidden: Access denied.");
             }
@@ -93,6 +93,6 @@ public class NotificationController {
         if (principal == null) return false;
         var actor = userRepository.findByUsername(principal.getName()).orElse(null);
         if (actor == null) return false;
-        return actor.getRole() == UserRole.ADMIN || actor.getId().equals(targetUserId);
+        return actor.getId().equals(targetUserId);
     }
 }

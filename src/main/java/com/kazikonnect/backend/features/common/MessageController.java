@@ -14,13 +14,13 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import java.security.Principal;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/messages")
 @RequiredArgsConstructor
-@SuppressWarnings("null")
 public class MessageController {
 
     private final MessageRepository messageRepository;
@@ -44,7 +44,7 @@ public class MessageController {
                 .map(u -> new UserContactDTO(u.getId(), u.getFullName() != null ? u.getFullName() : u.getUsername(), u.getEmail(), u.getRole() != null ? u.getRole().name() : "USER"))
                 .collect(Collectors.toList());
         
-        return ResponseEntity.ok(new org.springframework.data.domain.PageImpl<>(dto, pageable, contacts.getTotalElements()));
+        return ResponseEntity.ok(new org.springframework.data.domain.PageImpl<>(Objects.requireNonNull(dto), pageable, contacts.getTotalElements()));
     }
 
     // READ: Search conversation partners
@@ -62,7 +62,7 @@ public class MessageController {
                 .map(u -> new UserContactDTO(u.getId(), u.getFullName() != null ? u.getFullName() : u.getUsername(), u.getEmail(), u.getRole() != null ? u.getRole().name() : "USER"))
                 .collect(Collectors.toList());
         
-        return ResponseEntity.ok(new org.springframework.data.domain.PageImpl<>(dto, pageable, results.getTotalElements()));
+        return ResponseEntity.ok(new org.springframework.data.domain.PageImpl<>(Objects.requireNonNull(dto), pageable, results.getTotalElements()));
     }
 
     // READ: Get all users for messaging (deprecated - use /contacts instead)
@@ -86,8 +86,8 @@ public class MessageController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Forbidden: Cannot spoof message sender.");
         }
 
-        User sender = userRepository.findById(request.senderId()).orElse(null);
-        User receiver = userRepository.findById(request.receiverId()).orElse(null);
+        User sender = userRepository.findById(Objects.requireNonNull(request.senderId())).orElse(null);
+        User receiver = userRepository.findById(Objects.requireNonNull(request.receiverId())).orElse(null);
 
         if (sender == null || receiver == null) {
             return ResponseEntity.badRequest().body("Sender or Receiver not found.");
@@ -102,11 +102,10 @@ public class MessageController {
         Message saved = messageRepository.save(message);
         MessageDTO dto = MessageDTO.from(saved);
 
-        // Broadcast to receiver in real-time
         messagingTemplate.convertAndSendToUser(
-            receiver.getId().toString(),
+            Objects.requireNonNull(receiver.getId().toString()),
             "/queue/messages",
-            dto
+            Objects.requireNonNull(dto)
         );
 
         return ResponseEntity.ok(dto);
@@ -119,7 +118,7 @@ public class MessageController {
         User actor = userRepository.findByUsername(principal.getName()).orElse(null);
         if (actor == null) return ResponseEntity.status(401).body("Unauthorized.");
 
-        return messageRepository.findById(messageId).map(m -> {
+        return messageRepository.findById(Objects.requireNonNull(messageId)).map(m -> {
             boolean isAdmin = actor.getRole() == UserRole.ADMIN;
             boolean isParticipant = (m.getSender() != null && m.getSender().getId().equals(actor.getId())) ||
                                     (m.getReceiver() != null && m.getReceiver().getId().equals(actor.getId()));
@@ -145,13 +144,13 @@ public class MessageController {
         }
 
         Pageable pageable = PageRequest.of(page, size);
-        Page<Message> messages = messageRepository.findConversation(user1Id, user2Id, pageable);
+        Page<Message> messages = messageRepository.findConversation(Objects.requireNonNull(user1Id), Objects.requireNonNull(user2Id), pageable);
         
         List<MessageDTO> dto = messages.getContent().stream()
                 .map(MessageDTO::from)
                 .collect(Collectors.toList());
         
-        return ResponseEntity.ok(new org.springframework.data.domain.PageImpl<>(dto, pageable, messages.getTotalElements()));
+        return ResponseEntity.ok(new org.springframework.data.domain.PageImpl<>(Objects.requireNonNull(dto), pageable, messages.getTotalElements()));
     }
 
     // READ: Get a conversation between two users (legacy - backward compatibility)
@@ -169,7 +168,7 @@ public class MessageController {
         }
 
         Pageable pageable = PageRequest.of(0, 50);
-        List<MessageDTO> list = messageRepository.findConversation(user1Id, user2Id, pageable).stream()
+        List<MessageDTO> list = messageRepository.findConversation(Objects.requireNonNull(user1Id), Objects.requireNonNull(user2Id), pageable).stream()
                 .map(MessageDTO::from)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(list);
@@ -183,11 +182,11 @@ public class MessageController {
         User actor = userRepository.findByUsername(principal.getName()).orElse(null);
         if (actor == null) return ResponseEntity.status(401).body("Unauthorized.");
         
-        if (actor.getRole() != UserRole.ADMIN && !actor.getId().equals(userId)) {
+        if (!actor.getId().equals(userId)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Forbidden: Access denied.");
         }
 
-        List<MessageDTO> list = messageRepository.findRecentConversations(userId).stream()
+        List<MessageDTO> list = messageRepository.findRecentConversations(Objects.requireNonNull(userId)).stream()
                 .map(MessageDTO::from)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(list);
@@ -200,7 +199,7 @@ public class MessageController {
         User actor = userRepository.findByUsername(principal.getName()).orElse(null);
         if (actor == null) return ResponseEntity.status(401).body("Unauthorized.");
 
-        return messageRepository.findById(messageId).map(existing -> {
+        return messageRepository.findById(Objects.requireNonNull(messageId)).map(existing -> {
             if (existing.getReceiver() == null || !existing.getReceiver().getId().equals(actor.getId())) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Forbidden: Cannot mark other's message as read.");
             }
@@ -220,19 +219,18 @@ public class MessageController {
         }
 
         // Mark all messages from sender to receiver as read
-        List<Message> unread = messageRepository.findBySenderIdAndReceiverIdAndIsReadFalse(senderId, receiverId);
+        List<Message> unread = messageRepository.findBySenderIdAndReceiverIdAndIsReadFalse(Objects.requireNonNull(senderId), Objects.requireNonNull(receiverId));
         unread.forEach(m -> m.setRead(true));
         messageRepository.saveAll(unread);
 
-        // Broadcast Read Receipt to the sender
         messagingTemplate.convertAndSendToUser(
-            senderId.toString(),
+            Objects.requireNonNull(senderId.toString()),
             "/queue/messages",
-            java.util.Map.of(
+            Objects.requireNonNull(java.util.Map.of(
                 "type", "READ_RECEIPT",
                 "receiverId", receiverId,
                 "timestamp", java.time.LocalDateTime.now().toString()
-            )
+            ))
         );
 
         return ResponseEntity.ok("Conversation marked as read.");
@@ -245,11 +243,11 @@ public class MessageController {
         User actor = userRepository.findByUsername(principal.getName()).orElse(null);
         if (actor == null) return ResponseEntity.status(401).body("Unauthorized.");
         
-        if (actor.getRole() != UserRole.ADMIN && !actor.getId().equals(userId)) {
+        if (!actor.getId().equals(userId)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Forbidden: Access denied.");
         }
 
-        List<UserContactDTO> list = messageRepository.findRecentConversations(userId).stream()
+        List<UserContactDTO> list = messageRepository.findRecentConversations(Objects.requireNonNull(userId)).stream()
                 .map(m -> {
                     User other = m.getSender().getId().equals(userId) ? m.getReceiver() : m.getSender();
                     return new UserContactDTO(other.getId(), other.getFullName() != null ? other.getFullName() : other.getUsername(), other.getEmail(), 
@@ -266,7 +264,7 @@ public class MessageController {
         User actor = userRepository.findByUsername(principal.getName()).orElse(null);
         if (actor == null) return ResponseEntity.status(401).body("Unauthorized.");
 
-        return messageRepository.findById(messageId).map(m -> {
+        return messageRepository.findById(Objects.requireNonNull(messageId)).map(m -> {
             boolean isAdmin = actor.getRole() == UserRole.ADMIN;
             boolean isParticipant = (m.getSender() != null && m.getSender().getId().equals(actor.getId())) ||
                                     (m.getReceiver() != null && m.getReceiver().getId().equals(actor.getId()));
@@ -286,9 +284,9 @@ public class MessageController {
         if (sender == null) return ResponseEntity.status(401).build();
 
         messagingTemplate.convertAndSendToUser(
-            receiverId.toString(),
+            Objects.requireNonNull(receiverId.toString()),
             "/queue/typing",
-            java.util.Map.of("senderId", sender.getId(), "typing", typing)
+            Objects.requireNonNull(java.util.Map.of("senderId", Objects.requireNonNull(sender.getId()), "typing", typing))
         );
         return ResponseEntity.ok().build();
     }

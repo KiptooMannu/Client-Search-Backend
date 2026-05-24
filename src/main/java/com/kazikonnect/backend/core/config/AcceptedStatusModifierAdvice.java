@@ -27,8 +27,11 @@ public class AcceptedStatusModifierAdvice implements ResponseBodyAdvice<Object> 
                                   @NonNull ServerHttpRequest request, @NonNull ServerHttpResponse response) {
         if (response instanceof ServletServerHttpResponse servletResponse) {
             int status = servletResponse.getServletResponse().getStatus();
-            // If the response is successful (2xx), change it to 202 Accepted.
-            if (status >= 200 && status < 300) {
+            String path = request.getURI().getPath();
+            // If the response is successful (2xx), change it to 202 Accepted except for payments callback.
+            if (path != null && path.contains("/payments/mpesa/callback")) {
+                // Do not modify status for payments webhook
+            } else if (status >= 200 && status < 300) {
                 servletResponse.setStatusCode(HttpStatus.ACCEPTED);
             }
         }
