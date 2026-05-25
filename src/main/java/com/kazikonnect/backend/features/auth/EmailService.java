@@ -33,7 +33,7 @@ public class EmailService {
     @Value("${spring.mail.password:}")
     private String mailPassword;
 
-    @Value("${app.email.tmp-dir:${java.io.tmpdir}}")
+    @Value("${app.email.tmp-dir:/tmp}")
     private String emailTempDir;
 
     private final JavaMailSender mailSender;
@@ -146,8 +146,9 @@ public class EmailService {
                                    String suffix) {
         try {
             String tmpDir = (emailTempDir == null || emailTempDir.isBlank())
-                    ? System.getProperty("java.io.tmpdir")
+                    ? "/tmp"
                     : emailTempDir;
+            log.info("Writing fallback email file to {}", tmpDir);
             Path dir = Paths.get(tmpDir, "tmp-emails");
             Files.createDirectories(dir);
 
