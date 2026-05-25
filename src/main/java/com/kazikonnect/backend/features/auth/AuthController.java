@@ -45,11 +45,11 @@ public class AuthController {
     }
 
     @PostMapping("/password-reset/request")
-    @Operation(summary = "Request password reset", description = "Sends a password reset token to the user's email")
+    @Operation(summary = "Request password reset", description = "Sends a password reset token to the user's email if the account exists")
     public ResponseEntity<?> requestPasswordReset(@Valid @RequestBody PasswordResetRequest request) {
         try {
             authService.initializePasswordReset(request.email());
-            return ResponseEntity.ok("Password reset email sent to " + request.email());
+            return ResponseEntity.ok("If an account exists for this email, a password reset link has been sent.");
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }

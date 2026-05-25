@@ -11,6 +11,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -128,18 +129,22 @@ public class AuthService {
 
     @Transactional
     public void initializePasswordReset(String email) {
-        User user = userRepository.findByEmail(email)
-            .orElseThrow(() -> new RuntimeException("Error: No account found for this email. Please register first."));
-        
-        String resetToken = java.util.UUID.randomUUID().toString();
-        long expiryTime = System.currentTimeMillis() + (15 * 60 * 1000); // 15 minutes expiry
-        
-        // Store token in session/cache (simplified for now - stores in memory)
-        // In production, use Redis or a database table for persistence
-        RESET_TOKENS.put(resetToken, new PasswordResetToken(user.getId(), expiryTime));
-        
-        // Send email with reset link
-        emailService.sendPasswordResetEmail(email, resetToken);
+        String normalizedEmail = Optional.ofNullable(email)
+            .map(String::trim)
+            .filter(str -> !str.isBlank())
+            .orElseThrow(() -> new RuntimeException("Error: Email is required."));
+
+        userRepository.findByEmail(normalizedEmail).ifPresent(user -> {
+            String resetToken = java.util.UUID.randomUUID().toString();
+            long expiryTime = System.currentTimeMillis() + (15 * 60 * 1000); // 15 minutes expiry
+
+            // Store token in session/cache (simplified for now - stores in memory)
+            // In production, use Redis or a database table for persistence
+            RESET_TOKENS.put(resetToken, new PasswordResetToken(user.getId(), expiryTime));
+
+            // Send email with reset link
+            emailService.sendPasswordResetEmail(normalizedEmail, resetToken);
+        });
     }
 
     @Transactional

@@ -33,6 +33,9 @@ public class EmailService {
     @Value("${spring.mail.password:}")
     private String mailPassword;
 
+    @Value("${app.email.tmp-dir:${java.io.tmpdir}}")
+    private String emailTempDir;
+
     private final JavaMailSender mailSender;
 
     // =========================
@@ -126,7 +129,11 @@ public class EmailService {
 
         } catch (MailException | MessagingException e) {
             log.error("SMTP email sending failed", e);
-            writeEmailToFile(recipient, subject, htmlBody, "smtp-failed");
+            try {
+                writeEmailToFile(recipient, subject, htmlBody, "smtp-failed");
+            } catch (Exception writeEx) {
+                log.error("Failed to write fallback email file after SMTP failure", writeEx);
+            }
         }
     }
 
@@ -138,7 +145,10 @@ public class EmailService {
                                    String htmlBody,
                                    String suffix) {
         try {
-            Path dir = Paths.get("tmp-emails");
+            String tmpDir = (emailTempDir == null || emailTempDir.isBlank())
+                    ? System.getProperty("java.io.tmpdir")
+                    : emailTempDir;
+            Path dir = Paths.get(tmpDir, "tmp-emails");
             Files.createDirectories(dir);
 
             String fileName = System.currentTimeMillis()
@@ -159,7 +169,6 @@ public class EmailService {
 
         } catch (IOException e) {
             log.error("Failed to write email file", e);
-            throw new RuntimeException("Email sending completely failed", e);
         }
     }
 }
