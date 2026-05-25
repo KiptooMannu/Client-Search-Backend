@@ -132,10 +132,10 @@ public class AuthService {
             .orElseThrow(() -> new RuntimeException("Error: No account found for this email. Please register first."));
         
         String resetToken = java.util.UUID.randomUUID().toString();
-        long expiryTime = System.currentTimeMillis() + (60 * 60 * 1000); // 1 hour expiry
+        long expiryTime = System.currentTimeMillis() + (15 * 60 * 1000); // 15 minutes expiry
         
         // Store token in session/cache (simplified for now - stores in memory)
-        // In production, use Redis or database table for persistence
+        // In production, use Redis or a database table for persistence
         RESET_TOKENS.put(resetToken, new PasswordResetToken(user.getId(), expiryTime));
         
         // Send email with reset link
