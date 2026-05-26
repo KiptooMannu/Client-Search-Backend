@@ -11,6 +11,7 @@ public record PaymentStatusResponse(
     Double platformFee,
     Double workerAmount,
     String message,
+    String transactionDate,
     String createdAt,
     String timeoutAt
 ) {}

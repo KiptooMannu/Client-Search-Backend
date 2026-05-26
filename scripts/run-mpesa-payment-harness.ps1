@@ -59,7 +59,7 @@ function CreateWorkerProfile {
     $headers = @{ Authorization = "Bearer $Token" }
     $body = @{
         fullName        = "Automation Worker"
-        phoneNumber     = "254700000001"
+        phoneNumber     = "254700647035"
         location        = "Nairobi"
         experienceYears = 2
         bio             = "Automated test worker profile."

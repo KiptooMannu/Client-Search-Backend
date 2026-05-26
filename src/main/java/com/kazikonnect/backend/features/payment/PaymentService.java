@@ -6,14 +6,15 @@ import com.kazikonnect.backend.features.wallet.WalletService;
 import com.kazikonnect.backend.features.worker.JobRequest;
 import com.kazikonnect.backend.features.worker.JobRequestRepository;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.Principal;
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Map;
+import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -86,6 +87,7 @@ public class PaymentService {
                     null,
                     "No escrow payment found for this job.",
                     null,
+                    null,
                     null
             );
         }
@@ -102,10 +104,13 @@ public class PaymentService {
                 payment.getPlatformFee(),
                 payment.getWorkerAmount(),
                 payment.getMessage(),
+                formatDateTime(payment.getTransactionDate()),
                 formatDateTime(payment.getCreatedAt()),
                 formatDateTime(payment.getTimeoutAt())
         );
     }
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(PaymentService.class);
 
     @Transactional
     public void releaseEscrow(UUID jobId, Principal principal) {
@@ -153,9 +158,9 @@ public class PaymentService {
         EscrowPayment payment = escrowPaymentRepository.findByJobRequestId(jobId)
                 .orElseThrow(() -> new RuntimeException("Escrow payment not found."));
 
-        if (payment.getStatus() != EscrowPaymentStatus.ESCROWED
+        if (payment.getStatus() != EscrowPaymentStatus.SUCCESS
                 && payment.getStatus() != EscrowPaymentStatus.PENDING) {
-            throw new RuntimeException("Only pending or escrowed payments can be refunded.");
+            throw new RuntimeException("Only pending or successful payments can be refunded.");
         }
 
         payment.setStatus(EscrowPaymentStatus.REFUNDED);
@@ -179,31 +184,30 @@ public class PaymentService {
     }
 
     @Transactional
-    public void handleMpesaCallback(Map<String, Object> payload) {
-        if (payload == null || payload.isEmpty()) {
+    public void handleMpesaCallback(MpesaCallbackRequest callbackRequest, String remoteIp) {
+        if (callbackRequest == null || callbackRequest.body() == null || callbackRequest.body().stkCallback() == null) {
+            LOGGER.warn("Received empty or invalid MPESA callback payload from {}", remoteIp);
             return;
         }
 
-        Map<String, Object> body = cast(payload.get("Body"));
-        if (body == null) {
-            return;
-        }
-
-        Map<String, Object> stkCallback = cast(body.get("stkCallback"));
-        if (stkCallback == null) {
-            return;
-        }
-
-        Integer resultCode = toInteger(stkCallback.get("ResultCode"));
-        String checkoutRequestId = safeString(stkCallback.get("CheckoutRequestID"));
-        String resultDesc = safeString(stkCallback.get("ResultDesc"));
+        MpesaCallbackRequest.StkCallback stkCallback = callbackRequest.body().stkCallback();
+        Integer resultCode = stkCallback.resultCode();
+        String checkoutRequestId = safeString(stkCallback.checkoutRequestId());
+        String resultDesc = safeString(stkCallback.resultDesc());
 
         if (checkoutRequestId == null || checkoutRequestId.isBlank()) {
+            LOGGER.warn("MPESA callback missing CheckoutRequestID from {}", remoteIp);
             return;
         }
 
-        String callbackKey = buildCallbackIdempotencyKey(checkoutRequestId, resultCode);
+        String callbackKey = buildCallbackIdempotencyKey(checkoutRequestId);
         if (webhookProcessedLogRepository.existsById(callbackKey)) {
+            LOGGER.info("Duplicate MPESA callback ignored for CheckoutRequestID={}", checkoutRequestId);
+            return;
+        }
+
+        if (!mpesaService.isAcceptedCallbackSource(remoteIp)) {
+            LOGGER.warn("Rejected MPESA callback from unauthorized source {} for CheckoutRequestID={}", remoteIp, checkoutRequestId);
             return;
         }
 
@@ -213,43 +217,47 @@ public class PaymentService {
         String phoneNumber = null;
         String receiptNumber = null;
         Double amount = null;
+        LocalDateTime transactionDate = null;
 
-        Map<String, Object> callbackMetadata = cast(stkCallback.get("CallbackMetadata"));
-        if (callbackMetadata != null) {
-            List<Map<String, Object>> items = cast(callbackMetadata.get("Item"));
-            if (items != null) {
-                for (Map<String, Object> item : items) {
-                    String name = safeString(item.get("Name"));
-                    Object value = item.get("Value");
-                    switch (name) {
-                        case "MpesaReceiptNumber" -> receiptNumber = safeString(value);
-                        case "Amount" -> amount = toDouble(value);
-                        case "PhoneNumber" -> phoneNumber = safeString(value);
-                        default -> {}
-                    }
+        MpesaCallbackRequest.CallbackMetadata callbackMetadata = stkCallback.callbackMetadata();
+        if (callbackMetadata != null && callbackMetadata.items() != null) {
+            for (MpesaCallbackRequest.Item item : callbackMetadata.items()) {
+                if (item == null || item.name() == null) {
+                    continue;
+                }
+                switch (item.name()) {
+                    case "MpesaReceiptNumber" -> receiptNumber = safeString(item.value());
+                    case "Amount" -> amount = toDouble(item.value());
+                    case "PhoneNumber" -> phoneNumber = safeString(item.value());
+                    case "TransactionDate" -> transactionDate = parseTransactionDate(item.value());
+                    default -> {}
                 }
             }
+        } else {
+            LOGGER.warn("MPESA callback metadata missing for CheckoutRequestID={}", checkoutRequestId);
         }
 
         if (payment == null) {
+            LOGGER.warn("No local payment record found for MPESA callback CheckoutRequestID={}", checkoutRequestId);
             webhookProcessedLogRepository.save(WebhookProcessedLog.builder()
                     .id(callbackKey)
                     .checkoutRequestId(checkoutRequestId)
                     .resultCode(resultCode)
                     .resultDescription(resultDesc)
-                    .payload(String.valueOf(payload))
+                    .payload(String.valueOf(callbackRequest))
                     .build());
             return;
         }
 
         if (payment.getStatus() == EscrowPaymentStatus.RELEASED
                 || payment.getStatus() == EscrowPaymentStatus.REFUNDED) {
+            LOGGER.info("MPESA callback ignored because payment is already terminal for CheckoutRequestID={}", checkoutRequestId);
             webhookProcessedLogRepository.save(WebhookProcessedLog.builder()
                     .id(callbackKey)
                     .checkoutRequestId(checkoutRequestId)
                     .resultCode(resultCode)
                     .resultDescription(resultDesc)
-                    .payload(String.valueOf(payload))
+                    .payload(String.valueOf(callbackRequest))
                     .build());
             return;
         }
@@ -257,19 +265,23 @@ public class PaymentService {
         payment.setPhoneNumber(phoneNumber != null ? phoneNumber : payment.getPhoneNumber());
         payment.setMpesaReceiptNumber(receiptNumber);
         payment.setAmount(amount != null ? amount : payment.getAmount());
-        payment.setMessage(resultDesc);
+        payment.setTransactionDate(transactionDate);
+        payment.setMessage(resultDesc != null ? resultDesc : "MPESA callback received.");
         payment.setStatus(resultCode != null && resultCode == 0
-                ? EscrowPaymentStatus.ESCROWED
+                ? EscrowPaymentStatus.SUCCESS
                 : EscrowPaymentStatus.FAILED);
         payment.setUpdatedAt(LocalDateTime.now());
         escrowPaymentRepository.save(payment);
+
         webhookProcessedLogRepository.save(WebhookProcessedLog.builder()
                 .id(callbackKey)
                 .checkoutRequestId(checkoutRequestId)
                 .resultCode(resultCode)
                 .resultDescription(resultDesc)
-                .payload(String.valueOf(payload))
+                .payload(String.valueOf(callbackRequest))
                 .build());
+
+        LOGGER.info("MPESA callback processed for CheckoutRequestID={} with ResultCode={} and status={}", checkoutRequestId, resultCode, payment.getStatus());
     }
 
     private User getActor(Principal principal) {
@@ -291,30 +303,12 @@ public class PaymentService {
         return Math.round((amount * platformFeePercent / 100.0) * 100.0) / 100.0;
     }
 
-    private String buildCallbackIdempotencyKey(String checkoutRequestId, Integer resultCode) {
-        return checkoutRequestId + "_" + (resultCode == null ? "null" : resultCode);
-    }
-
-    @SuppressWarnings("unchecked")
-    private <T> T cast(Object value) {
-        return (T) value;
+    private String buildCallbackIdempotencyKey(String checkoutRequestId) {
+        return checkoutRequestId;
     }
 
     private String safeString(Object value) {
         return value == null ? null : String.valueOf(value);
-    }
-
-    private Integer toInteger(Object value) {
-        if (value instanceof Number number) {
-            return number.intValue();
-        }
-        if (value instanceof String s && !s.isBlank()) {
-            try {
-                return Integer.parseInt(s);
-            } catch (NumberFormatException ignored) {
-            }
-        }
-        return null;
     }
 
     private Double toDouble(Object value) {
@@ -328,6 +322,22 @@ public class PaymentService {
             }
         }
         return null;
+    }
+
+    private LocalDateTime parseTransactionDate(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String raw = value instanceof Number number ? String.valueOf(number) : String.valueOf(value);
+        if (raw.isBlank()) {
+            return null;
+        }
+        try {
+            return LocalDateTime.parse(raw, DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+        } catch (Exception e) {
+            LOGGER.warn("Unable to parse transaction date from MPESA callback value: {}", raw);
+            return null;
+        }
     }
 
     private String formatDateTime(LocalDateTime value) {

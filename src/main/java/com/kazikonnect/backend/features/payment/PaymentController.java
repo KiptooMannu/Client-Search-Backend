@@ -1,6 +1,7 @@
 package com.kazikonnect.backend.features.payment;
 
 import lombok.RequiredArgsConstructor;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -47,8 +48,14 @@ public class PaymentController {
     }
 
     @PostMapping("/mpesa/callback")
-    public ResponseEntity<Map<String, String>> receiveMpesaCallback(@RequestBody Map<String, Object> payload) {
-        paymentService.handleMpesaCallback(payload);
+    public ResponseEntity<Map<String, String>> receiveMpesaCallback(
+            @RequestBody MpesaCallbackRequest callbackRequest,
+            HttpServletRequest servletRequest) {
+        String remoteIp = servletRequest.getHeader("X-Forwarded-For");
+        if (remoteIp == null || remoteIp.isBlank()) {
+            remoteIp = servletRequest.getRemoteAddr();
+        }
+        paymentService.handleMpesaCallback(callbackRequest, remoteIp);
         return ResponseEntity.ok(Map.of("status", "received"));
     }
 }

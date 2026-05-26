@@ -39,7 +39,7 @@ public class EscrowPayment {
     @Column(name = "amount", nullable = false)
     private Double amount;
 
-    @Column(name = "phone_number")
+    @Column(name = "client_phone_number", nullable = false)
     private String phoneNumber;
 
     @Column(name = "checkout_request_id", unique = true)
@@ -47,6 +47,9 @@ public class EscrowPayment {
 
     @Column(name = "mpesa_receipt_number")
     private String mpesaReceiptNumber;
+
+    @Column(name = "transaction_date")
+    private LocalDateTime transactionDate;
 
     @Column(name = "platform_fee")
     private Double platformFee;

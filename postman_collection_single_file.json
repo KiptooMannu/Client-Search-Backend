@@ -1324,9 +1324,9 @@
                 "mpesa",
                 "callback"
               ]
-            },
-            "description": "Simulate Safaricom M-Pesa callback for STK push verification."
-          }
+            }
+          },
+          "description": "Simulate Safaricom M-Pesa callback for STK push verification."
         },
         {
           "name": "Get Escrow Payment Status",
@@ -1343,9 +1343,9 @@
                 "status",
                 "{{jobId}}"
               ]
-            },
-            "description": "Get current escrow status and details of the payment for a job."
-          }
+            }
+          },
+          "description": "Get current escrow status and details of the payment for a job."
         },
         {
           "name": "Release Escrow",
@@ -1372,9 +1372,9 @@
                 "escrow",
                 "release"
               ]
-            },
-            "description": "Release the escrow payment to the worker after successful approval."
-          }
+            }
+          },
+          "description": "Release the escrow payment to the worker after successful approval."
         },
         {
           "name": "Refund Escrow",
@@ -1401,9 +1401,9 @@
                 "escrow",
                 "refund"
               ]
-            },
-            "description": "Refund the escrow payment back to the client."
-          }
+            }
+          },
+          "description": "Refund the escrow payment back to the client."
         }
       ]
     },
@@ -1424,9 +1424,9 @@
                 "wallet",
                 "balance"
               ]
-            },
-            "description": "Retrieve the current wallet balance of the authenticated user."
-          }
+            }
+          },
+          "description": "Retrieve the current wallet balance of the authenticated user."
         }
       ]
     },
