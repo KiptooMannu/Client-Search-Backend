@@ -2,9 +2,11 @@ package com.kazikonnect.backend.features.worker;
 
 import com.kazikonnect.backend.features.auth.User;
 import com.kazikonnect.backend.features.auth.UserRepository;
+import com.kazikonnect.backend.features.payment.PaymentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -21,6 +23,7 @@ public class JobRequestController {
     private final WorkerProfileRepository workerProfileRepository;
     private final com.kazikonnect.backend.features.common.NotificationRepository notificationRepository;
     private final com.kazikonnect.backend.features.common.MessageRepository messageRepository;
+    private final PaymentService paymentService;
 
     // READ: Get all job requests (Admin Oversight)
     @GetMapping("/all")
@@ -116,6 +119,7 @@ public class JobRequestController {
     // UPDATE: Update job status (e.g. ACCEPTED, REJECTED, COMPLETED, CANCELLED)
     @PutMapping("/{jobId}/status")
     @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
+    @Transactional
     public ResponseEntity<?> updateJobStatus(@PathVariable UUID jobId, @RequestParam JobStatus status,
             Principal principal) {
         return jobRequestRepository.findById(jobId).map(job -> {
@@ -198,7 +202,14 @@ public class JobRequestController {
             }
 
             // LOGIC: If client marks as APPROVED (Payment Release)
-            if (targetStatus == JobStatus.APPROVED && clientOwner && oldStatus != JobStatus.APPROVED) {
+            if (targetStatus == JobStatus.APPROVED && (clientOwner || admin) && oldStatus != JobStatus.APPROVED) {
+                try {
+                    paymentService.releaseEscrow(jobId, principal);
+                } catch (RuntimeException e) {
+                    return ResponseEntity.badRequest().body(
+                            "Cannot approve work until escrow payment is captured: " + e.getMessage());
+                }
+
                 // 1. Notification to Worker
                 notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
                         .user(job.getWorker().getUser())
@@ -240,6 +251,8 @@ public class JobRequestController {
 
             // LOGIC: If job is CANCELLED
             if (targetStatus == JobStatus.CANCELLED && oldStatus != JobStatus.CANCELLED) {
+                paymentService.refundEscrowBySystem(jobId, "Escrow refunded due to job cancellation.");
+
                 User recipient = clientOwner ? job.getWorker().getUser() : job.getClient();
                 notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
                         .user(recipient)
