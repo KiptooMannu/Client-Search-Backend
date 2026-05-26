@@ -38,12 +38,13 @@ public class MpesaService {
     @Value("${mpesa.passkey:}")
     private String passkey;
 
-    @Value("${mpesa.callback-url:http://localhost:8080/api/payments/mpesa/callback}")
+    @Value("${mpesa.callback-url:https://client-search-backend.onrender.com/api/payments/mpesa/callback}")
     private String callbackUrl;
 
     private final RestTemplate restTemplate = new RestTemplate();
 
-    public StkPushResponse initiateStkPush(String phoneNumber, double amount, String accountReference, String transactionDesc) {
+    public StkPushResponse initiateStkPush(String phoneNumber, double amount, String accountReference,
+            String transactionDesc) {
         if (consumerKey == null || consumerKey.isBlank() || consumerSecret == null || consumerSecret.isBlank()) {
             throw new RuntimeException("M-PESA credentials are not configured.");
         }
@@ -53,7 +54,8 @@ public class MpesaService {
         String url = getBaseUrl() + "/mpesa/stkpush/v1/processrequest";
 
         String timestamp = LocalDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
-        String password = Base64.getEncoder().encodeToString((shortcode + passkey + timestamp).getBytes(StandardCharsets.UTF_8));
+        String password = Base64.getEncoder()
+                .encodeToString((shortcode + passkey + timestamp).getBytes(StandardCharsets.UTF_8));
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("BusinessShortCode", shortcode);
@@ -77,8 +79,8 @@ public class MpesaService {
                 url,
                 HttpMethod.POST,
                 new HttpEntity<>(payload, headers),
-                new ParameterizedTypeReference<Map<String, Object>>() {}
-        );
+                new ParameterizedTypeReference<Map<String, Object>>() {
+                });
 
         Map<String, Object> body = response.getBody();
         if (body == null) {
@@ -86,10 +88,10 @@ public class MpesaService {
         }
 
         return new StkPushResponse(
-            String.valueOf(body.getOrDefault("ResponseDescription", body.getOrDefault("errorMessage", "Unknown response"))),
-            String.valueOf(body.getOrDefault("CheckoutRequestID", "")),
-            String.valueOf(body.getOrDefault("CustomerMessage", body.getOrDefault("ResponseDescription", "")))
-        );
+                String.valueOf(body.getOrDefault("ResponseDescription",
+                        body.getOrDefault("errorMessage", "Unknown response"))),
+                String.valueOf(body.getOrDefault("CheckoutRequestID", "")),
+                String.valueOf(body.getOrDefault("CustomerMessage", body.getOrDefault("ResponseDescription", ""))));
     }
 
     public String normalizePhoneNumber(String phoneNumber) {
@@ -127,8 +129,8 @@ public class MpesaService {
                 url,
                 HttpMethod.GET,
                 new HttpEntity<>(null, headers),
-                new ParameterizedTypeReference<Map<String, Object>>() {}
-        );
+                new ParameterizedTypeReference<Map<String, Object>>() {
+                });
 
         Map<String, Object> body = response.getBody();
         if (body == null || !body.containsKey("access_token")) {
@@ -137,13 +139,12 @@ public class MpesaService {
 
         return Objects.requireNonNull(
                 String.valueOf(body.get("access_token")),
-                "access_token value must not be null"
-        );
+                "access_token value must not be null");
     }
 
     private String getBaseUrl() {
         return mpesaEnv.equalsIgnoreCase("production")
-            ? "https://api.safaricom.co.ke"
-            : "https://sandbox.safaricom.co.ke";
+                ? "https://api.safaricom.co.ke"
+                : "https://sandbox.safaricom.co.ke";
     }
 }

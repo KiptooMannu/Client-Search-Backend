@@ -99,9 +99,10 @@ function InitiateStkPush {
         [string]$JobId,
         [string]$PhoneNumber
     )
-    $url = "$BaseUrl/api/payments/mpesa/stkpush?jobId=$JobId&phoneNumber=$PhoneNumber"
+    $url = "$BaseUrl/api/payments/mpesa/stkpush"
     $headers = @{ Authorization = "Bearer $ClientToken" }
-    return Invoke-JsonRequest -Method 'POST' -Url $url -Headers $headers
+    $body = @{ jobId = $JobId; phoneNumber = $PhoneNumber }
+    return Invoke-JsonRequest -Method 'POST' -Url $url -Headers $headers -Body $body
 }
 
 function SimulateMpesaCallback {
@@ -144,21 +145,29 @@ function ReleaseEscrow {
         [string]$Token,
         [string]$JobId
     )
-    $url = "$BaseUrl/api/payments/escrow/release?jobId=$JobId"
+    $url = "$BaseUrl/api/payments/escrow/release"
     $headers = @{ Authorization = "Bearer $Token" }
-    return Invoke-JsonRequest -Method 'POST' -Url $url -Headers $headers
+    $body = @{ jobId = $JobId }
+    return Invoke-JsonRequest -Method 'POST' -Url $url -Headers $headers -Body $body
 }
 
 # Start script
+$suffix = Get-Random -Minimum 100000 -Maximum 999999
+$resolvedClientEmail = if ($ClientEmail -eq "client@user.com") { "client_$suffix@user.com" } else { $ClientEmail }
+$resolvedWorkerEmail = $WorkerEmail
+
+Write-Host "Resolved Client Email: $resolvedClientEmail"
+Write-Host "Resolved Worker Email: $resolvedWorkerEmail"
+
 $admin = LoginOrRegister -Email $AdminEmail -Password $AdminPassword -Role 'ADMIN' -FirstName 'Admin' -SecondName 'User'
-$client = LoginOrRegister -Email $ClientEmail -Password $ClientPassword -Role 'CLIENT' -FirstName 'Client' -SecondName 'User'
-$worker = LoginOrRegister -Email $WorkerEmail -Password $WorkerPassword -Role 'WORKER' -FirstName 'Worker' -SecondName 'User'
+$client = LoginOrRegister -Email $resolvedClientEmail -Password $ClientPassword -Role 'CLIENT' -FirstName 'Client' -SecondName 'User'
+$worker = LoginOrRegister -Email $resolvedWorkerEmail -Password $WorkerPassword -Role 'WORKER' -FirstName 'Worker' -SecondName 'User'
 
 Write-Host "Admin userId: $($admin.userId)"
 Write-Host "Client userId: $($client.userId)"
 Write-Host "Worker userId: $($worker.userId)"
 
-$workerProfile = CreateWorkerProfile -Token $worker.accessToken -Email $WorkerEmail
+$workerProfile = CreateWorkerProfile -Token $worker.accessToken -Email $resolvedWorkerEmail
 Write-Host "Worker profile created: $($workerProfile.profile.id)"
 
 $approval = ApproveWorkerProfile -AdminToken $admin.accessToken -WorkerProfileId $workerProfile.profile.id -AdminUserId $admin.userId

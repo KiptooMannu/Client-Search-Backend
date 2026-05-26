@@ -1,13 +1,13 @@
 {
   "info": {
-    "name": "Kazi Konnect API - Single File Import",
-    "description": "Self-contained Postman collection for all backend routes. Import only this file, then run Login as Worker / Login as Client / Login as Admin to populate {{authToken}} automatically.",
+    "name": "Kazi Konnect - Complete API (All Endpoints & Payments)",
+    "description": "Complete Postman collection for all Kazi Konnect routes, including corrected Admin approvals, Marketplace search, Message conversations, and newly added M-Pesa Payments / Escrow / Wallet endpoints.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     {
       "key": "baseUrl",
-      "value": "https://client-search-backend.onrender.com/api"
+      "value": "https://client-search-backend.onrender.com"
     },
     {
       "key": "authToken",
@@ -35,6 +35,14 @@
     },
     {
       "key": "receiverId",
+      "value": ""
+    },
+    {
+      "key": "adminUserId",
+      "value": ""
+    },
+    {
+      "key": "checkoutRequestId",
       "value": ""
     }
   ],
@@ -308,12 +316,8 @@
                 "value": "application/json"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"approvedBy\": \"adminId\"\n}"
-            },
             "url": {
-              "raw": "{{baseUrl}}/api/admin/workers/:id/approve",
+              "raw": "{{baseUrl}}/api/admin/workers/:id/approve?adminId={{adminUserId}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -323,6 +327,18 @@
                 "workers",
                 ":id",
                 "approve"
+              ],
+              "query": [
+                {
+                  "key": "adminId",
+                  "value": "{{adminUserId}}"
+                }
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
               ]
             }
           }
@@ -337,12 +353,8 @@
                 "value": "application/json"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"reason\": \"Invalid documents\"\n}"
-            },
             "url": {
-              "raw": "{{baseUrl}}/api/admin/workers/:id/reject",
+              "raw": "{{baseUrl}}/api/admin/workers/:id/reject?adminId={{adminUserId}}&reason=Invalid documents",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -352,6 +364,22 @@
                 "workers",
                 ":id",
                 "reject"
+              ],
+              "query": [
+                {
+                  "key": "adminId",
+                  "value": "{{adminUserId}}"
+                },
+                {
+                  "key": "reason",
+                  "value": "Invalid documents"
+                }
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
               ]
             }
           }
@@ -552,12 +580,8 @@
                 "value": "application/json"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"New Name\"\n}"
-            },
             "url": {
-              "raw": "{{baseUrl}}/api/admin/users/:id/name",
+              "raw": "{{baseUrl}}/api/admin/users/:id/name?fullName=New Name",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -567,6 +591,18 @@
                 "users",
                 ":id",
                 "name"
+              ],
+              "query": [
+                {
+                  "key": "fullName",
+                  "value": "New Name"
+                }
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
               ]
             }
           }
@@ -709,7 +745,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"fullName\": \"Worker Name\",\n  \"phoneNumber\": \"+254712345678\",\n  \"bio\": \"Experienced plumber with 5 years of trade work.\",\n  \"location\": \"Nairobi, Kenya\",\n  \"experienceYears\": 5,\n  \"hourlyRate\": 25.0,\n  \"category\": \"Plumbing\",\n  \"profilePictureUrl\": \"https://example.com/profile.jpg\",\n  \"availabilityDetails\": {\n    \"monday\": \"Available\",\n    \"tuesday\": \"Available\"\n  },\n  \"preferredLocations\": [\"Nairobi\", \"Kiambu\"],\n  \"skills\": [\"Plumbing\", \"Pipe Repair\"],\n  \"workHistory\": [\n    {\n      \"company\": \"FixIt Ltd\",\n      \"role\": \"Lead Plumber\",\n      \"period\": \"2019-2024\",\n      \"description\": \"Managed residential and commercial plumbing projects.\"\n    }\n  ],\n  \"certifications\": [\n    {\n      \"name\": \"Certified Plumbing Technician\",\n      \"issuer\": \"Trade Board\",\n      \"year\": 2022\n    }\n  ]\n}"
+              "raw": "{\n  \"fullName\": \"Worker Name\",\n  \"phoneNumber\": \"+254712345678\",\n  \"bio\": \"Experienced plumber with 5 years of trade work.\",\n  \"location\": \"Nairobi, Kenya\",\n  \"experienceYears\": 5,\n  \"hourlyRate\": 25,\n  \"category\": \"Plumbing\",\n  \"profilePictureUrl\": \"https://example.com/profile.jpg\",\n  \"availabilityDetails\": {\n    \"weekdays\": true,\n    \"weekends\": false,\n    \"evenings\": true\n  },\n  \"preferredLocations\": [\n    \"Nairobi\",\n    \"Kiambu\"\n  ],\n  \"skills\": [\n    \"Plumbing\",\n    \"Pipe Repair\"\n  ],\n  \"workHistory\": [\n    {\n      \"company\": \"FixIt Ltd\",\n      \"role\": \"Lead Plumber\",\n      \"period\": \"2019-2024\",\n      \"description\": \"Managed residential and commercial plumbing projects.\"\n    }\n  ],\n  \"certifications\": [\n    {\n      \"name\": \"Certified Plumbing Technician\",\n      \"issuer\": \"Trade Board\",\n      \"year\": 2022\n    }\n  ]\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/workers/profile?email=worker@example.com",
@@ -760,7 +796,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"fullName\": \"Updated Worker Name\",\n  \"phoneNumber\": \"+254712345678\",\n  \"bio\": \"Updated bio for worker\",\n  \"location\": \"Nairobi, Kenya\",\n  \"experienceYears\": 6,\n  \"hourlyRate\": 30.0,\n  \"category\": \"Plumbing\",\n  \"profilePictureUrl\": \"https://example.com/updated-profile.jpg\",\n  \"availabilityDetails\": {\n    \"monday\": \"Available\",\n    \"tuesday\": \"Busy\"\n  },\n  \"preferredLocations\": [\"Nairobi\"],\n  \"skills\": [\"Plumbing\", \"Welding\"],\n  \"workHistory\": [\n    {\n      \"company\": \"Repair Co\",\n      \"role\": \"Senior Technician\",\n      \"period\": \"2022-2024\",\n      \"description\": \"Handled advanced plumbing and welding projects.\"\n    }\n  ],\n  \"certifications\": [\n    {\n      \"name\": \"Advanced Plumbing Certificate\",\n      \"issuer\": \"Trade Board\",\n      \"year\": 2023\n    }\n  ]\n}"
+              "raw": "{\n  \"fullName\": \"Updated Worker Name\",\n  \"phoneNumber\": \"+254712345678\",\n  \"bio\": \"Updated bio for worker\",\n  \"location\": \"Nairobi, Kenya\",\n  \"experienceYears\": 6,\n  \"hourlyRate\": 30,\n  \"category\": \"Plumbing\",\n  \"profilePictureUrl\": \"https://example.com/updated-profile.jpg\",\n  \"availabilityDetails\": {\n    \"weekdays\": true,\n    \"weekends\": false,\n    \"evenings\": true\n  },\n  \"preferredLocations\": [\n    \"Nairobi\"\n  ],\n  \"skills\": [\n    \"Plumbing\",\n    \"Welding\"\n  ],\n  \"workHistory\": [\n    {\n      \"company\": \"Repair Co\",\n      \"role\": \"Senior Technician\",\n      \"period\": \"2022-2024\",\n      \"description\": \"Handled advanced plumbing and welding projects.\"\n    }\n  ],\n  \"certifications\": [\n    {\n      \"name\": \"Advanced Plumbing Certificate\",\n      \"issuer\": \"Trade Board\",\n      \"year\": 2023\n    }\n  ]\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/workers/profile/:userId",
@@ -946,12 +982,8 @@
                 "value": "application/json"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"verified\": true\n}"
-            },
             "url": {
-              "raw": "{{baseUrl}}/api/documents/:documentId/verify",
+              "raw": "{{baseUrl}}/api/documents/:documentId/verify?adminId={{adminUserId}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -960,6 +992,18 @@
                 "documents",
                 ":documentId",
                 "verify"
+              ],
+              "query": [
+                {
+                  "key": "adminId",
+                  "value": "{{adminUserId}}"
+                }
+              ],
+              "variable": [
+                {
+                  "key": "documentId",
+                  "value": ""
+                }
               ]
             }
           }
@@ -1015,7 +1059,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"description\": \"Fix sink and replace broken pipe\"\n}"
+              "raw": "{\n  \"description\": \"Fix sink and replace broken pipe\",\n  \"totalCost\": 1500\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/jobs/request?clientId={{clientId}}&workerUserId={{workerUserId}}",
@@ -1162,7 +1206,7 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{baseUrl}}/api/marketplace/search?q=plumber&location=town",
+              "raw": "{{baseUrl}}/api/marketplace/search?skill=Plumbing&location=Nairobi&minExp=2",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1173,12 +1217,16 @@
               ],
               "query": [
                 {
-                  "key": "q",
-                  "value": "plumber"
+                  "key": "skill",
+                  "value": "Plumbing"
                 },
                 {
                   "key": "location",
-                  "value": "town"
+                  "value": "Nairobi"
+                },
+                {
+                  "key": "minExp",
+                  "value": "2"
                 }
               ]
             }
@@ -1200,6 +1248,184 @@
                 ":profileId"
               ]
             }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Payments",
+      "item": [
+        {
+          "name": "Initiate M-Pesa STK Push",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = {};",
+                  "try { json = pm.response.json(); } catch (e) { }",
+                  "var checkoutId = json.checkoutRequestId || (json.data && json.data.checkoutRequestId);",
+                  "if (checkoutId) { pm.collectionVariables.set('checkoutRequestId', checkoutId); }",
+                  "pm.test('Save checkoutRequestId', function() { pm.expect(checkoutId).to.be.a('string'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jobId\": \"{{jobId}}\",\n  \"phoneNumber\": \"254700000001\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/mpesa/stkpush",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "mpesa",
+                "stkpush"
+              ]
+            },
+            "description": "Initiate M-Pesa STK Push payment for a job. Usually called by a Client."
+          }
+        },
+        {
+          "name": "Simulate M-Pesa Callback",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"Body\": {\n    \"stkCallback\": {\n      \"MerchantRequestID\": \"MR-12345\",\n      \"CheckoutRequestID\": \"{{checkoutRequestId}}\",\n      \"ResultCode\": 0,\n      \"ResultDesc\": \"The service request is processed successfully.\",\n      \"CallbackMetadata\": {\n        \"Item\": [\n          { \"Name\": \"Amount\", \"Value\": 1500 },\n          { \"Name\": \"MpesaReceiptNumber\", \"Value\": \"ABC123XYZ\" },\n          { \"Name\": \"PhoneNumber\", \"Value\": \"254700000001\" }\n        ]\n      }\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/mpesa/callback",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "mpesa",
+                "callback"
+              ]
+            },
+            "description": "Simulate Safaricom M-Pesa callback for STK push verification."
+          }
+        },
+        {
+          "name": "Get Escrow Payment Status",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/status/{{jobId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "status",
+                "{{jobId}}"
+              ]
+            },
+            "description": "Get current escrow status and details of the payment for a job."
+          }
+        },
+        {
+          "name": "Release Escrow",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jobId\": \"{{jobId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/escrow/release",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "escrow",
+                "release"
+              ]
+            },
+            "description": "Release the escrow payment to the worker after successful approval."
+          }
+        },
+        {
+          "name": "Refund Escrow",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jobId\": \"{{jobId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/escrow/refund",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "escrow",
+                "refund"
+              ]
+            },
+            "description": "Refund the escrow payment back to the client."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Wallet",
+      "item": [
+        {
+          "name": "Get Wallet Balance",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/wallet/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "wallet",
+                "balance"
+              ]
+            },
+            "description": "Retrieve the current wallet balance of the authenticated user."
           }
         }
       ]
@@ -1438,7 +1664,7 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{baseUrl}}/api/messages/conversation?userA=id&userB=id",
+              "raw": "{{baseUrl}}/api/messages/conversation?user1Id={{senderId}}&user2Id={{receiverId}}&page=0&size=50",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1449,12 +1675,20 @@
               ],
               "query": [
                 {
-                  "key": "userA",
-                  "value": "id"
+                  "key": "user1Id",
+                  "value": "{{senderId}}"
                 },
                 {
-                  "key": "userB",
-                  "value": "id"
+                  "key": "user2Id",
+                  "value": "{{receiverId}}"
+                },
+                {
+                  "key": "page",
+                  "value": "0"
+                },
+                {
+                  "key": "size",
+                  "value": "50"
                 }
               ]
             }
@@ -1465,7 +1699,7 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{baseUrl}}/api/messages/conversation/legacy?userA=id&userB=id",
+              "raw": "{{baseUrl}}/api/messages/conversation/legacy?user1Id={{senderId}}&user2Id={{receiverId}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1477,12 +1711,12 @@
               ],
               "query": [
                 {
-                  "key": "userA",
-                  "value": "id"
+                  "key": "user1Id",
+                  "value": "{{senderId}}"
                 },
                 {
-                  "key": "userB",
-                  "value": "id"
+                  "key": "user2Id",
+                  "value": "{{receiverId}}"
                 }
               ]
             }
@@ -1598,12 +1832,8 @@
                 "value": "application/json"
               }
             ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"conversationId\": \"id\",\n  \"typing\": true\n}"
-            },
             "url": {
-              "raw": "{{baseUrl}}/api/messages/typing",
+              "raw": "{{baseUrl}}/api/messages/typing?receiverId={{receiverId}}&typing=true",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1611,6 +1841,16 @@
                 "api",
                 "messages",
                 "typing"
+              ],
+              "query": [
+                {
+                  "key": "receiverId",
+                  "value": "{{receiverId}}"
+                },
+                {
+                  "key": "typing",
+                  "value": "true"
+                }
               ]
             }
           }

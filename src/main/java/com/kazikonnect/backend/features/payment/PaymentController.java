@@ -16,13 +16,15 @@ public class PaymentController {
 
     private final PaymentService paymentService;
 
+    public record StkPushRequest(UUID jobId, String phoneNumber) {}
+    public record EscrowActionRequest(UUID jobId) {}
+
     @PostMapping("/mpesa/stkpush")
     @PreAuthorize("hasAuthority('Client') or hasAuthority('Admin')")
     public ResponseEntity<StkPushResponse> initiateStkPush(
-            @RequestParam UUID jobId,
-            @RequestParam String phoneNumber,
+            @RequestBody StkPushRequest request,
             Principal principal) {
-        return ResponseEntity.ok(paymentService.initiateStkPush(jobId, phoneNumber, principal));
+        return ResponseEntity.ok(paymentService.initiateStkPush(request.jobId(), request.phoneNumber(), principal));
     }
 
     @GetMapping("/status/{jobId}")
@@ -32,15 +34,15 @@ public class PaymentController {
 
     @PostMapping("/escrow/release")
     @PreAuthorize("hasAuthority('Client') or hasAuthority('Admin')")
-    public ResponseEntity<Map<String, String>> releaseEscrow(@RequestParam UUID jobId, Principal principal) {
-        paymentService.releaseEscrow(jobId, principal);
+    public ResponseEntity<Map<String, String>> releaseEscrow(@RequestBody EscrowActionRequest request, Principal principal) {
+        paymentService.releaseEscrow(request.jobId(), principal);
         return ResponseEntity.ok(Map.of("message", "Escrow successfully released."));
     }
 
     @PostMapping("/escrow/refund")
     @PreAuthorize("hasAuthority('Client') or hasAuthority('Admin')")
-    public ResponseEntity<Map<String, String>> refundEscrow(@RequestParam UUID jobId, Principal principal) {
-        paymentService.refundEscrow(jobId, principal);
+    public ResponseEntity<Map<String, String>> refundEscrow(@RequestBody EscrowActionRequest request, Principal principal) {
+        paymentService.refundEscrow(request.jobId(), principal);
         return ResponseEntity.ok(Map.of("message", "Escrow successfully refunded."));
     }
 
