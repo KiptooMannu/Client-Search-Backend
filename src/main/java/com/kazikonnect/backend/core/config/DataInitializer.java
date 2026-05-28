@@ -19,6 +19,14 @@ import java.util.stream.Collectors;
 @SuppressWarnings("null")
 public class DataInitializer implements CommandLineRunner {
 
+    private static final UUID CLIENT_USER_ID = UUID.fromString("1d30b1c2-0cd7-4f78-a13f-3a4bceb789aa");
+    private static final UUID DAVID_WORKER_USER_ID = UUID.fromString("2cfa0123-53e5-4a6c-b9e0-4d7a6bcd8901");
+    private static final UUID SARAH_WORKER_USER_ID = UUID.fromString("3bde7e29-74f1-4f5e-8e3a-66f4c8b6d123");
+    private static final UUID MIKE_WORKER_USER_ID = UUID.fromString("4a1f3c5b-8d2f-498a-99fa-11b4c3d78901");
+    private static final UUID LINDA_CLIENT_USER_ID = UUID.fromString("5f6e7d81-3290-4b3a-9f8e-00a1bc2d3456");
+    private static final UUID JAMES_CLIENT_USER_ID = UUID.fromString("6d7f8e92-4411-4b4c-ae2f-112233445566");
+    private static final UUID AMINA_CLIENT_USER_ID = UUID.fromString("7e8f9a03-5522-4c5d-bf3a-223344556677");
+
     private final Optional<SkillRepository> skillRepository;
     private final UserRepository userRepository;
     private final AuthRepository authRepository;
@@ -302,6 +310,7 @@ public class DataInitializer implements CommandLineRunner {
         String sName = parts.length > 1 ? parts[1] : "";
 
         User u = userRepository.save(User.builder()
+                .id(fixedUserIdForEmail(email))
                 .username(username).email(email)
                 .firstName(fName).secondName(sName).fullName(fullName)
                 .role(UserRole.WORKER).build());
@@ -378,6 +387,7 @@ public class DataInitializer implements CommandLineRunner {
         String sName = parts.length > 1 ? parts[1] : "";
 
         User u = userRepository.save(User.builder()
+                .id(fixedUserIdForEmail(email))
                 .username(username).email(email)
                 .firstName(fName).secondName(sName).fullName(fullName)
                 .role(UserRole.CLIENT).build());
@@ -386,6 +396,19 @@ public class DataInitializer implements CommandLineRunner {
         clientProfileRepository.save(ClientProfile.builder()
                 .user(u).fullName(profileName).phoneNumber(phone).build());
         log.info("Seeded client: {}", email);
+    }
+
+    private UUID fixedUserIdForEmail(String email) {
+        return switch (email) {
+            case "client@user.com" -> CLIENT_USER_ID;
+            case "linda@client.com" -> LINDA_CLIENT_USER_ID;
+            case "james@client.com" -> JAMES_CLIENT_USER_ID;
+            case "amina@client.com" -> AMINA_CLIENT_USER_ID;
+            case "david@power.com" -> DAVID_WORKER_USER_ID;
+            case "sarah@design.com" -> SARAH_WORKER_USER_ID;
+            case "mike@pipes.com" -> MIKE_WORKER_USER_ID;
+            default -> null;
+        };
     }
 
     private void seedBulkWorkers() {

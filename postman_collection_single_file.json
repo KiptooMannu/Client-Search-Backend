@@ -15,11 +15,11 @@
     },
     {
       "key": "clientId",
-      "value": ""
+      "value": "1d30b1c2-0cd7-4f78-a13f-3a4bceb789aa"
     },
     {
       "key": "workerUserId",
-      "value": ""
+      "value": "2cfa0123-53e5-4a6c-b9e0-4d7a6bcd8901"
     },
     {
       "key": "workerProfileId",
@@ -113,7 +113,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"worker@example.com\",\n  \"password\": \"Secret123!\"\n}"
+              "raw": "{\n  \"email\": \"david@power.com\",\n  \"password\": \"password123\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/auth/login",
@@ -154,7 +154,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"client@example.com\",\n  \"password\": \"Secret123!\"\n}"
+              "raw": "{\n  \"email\": \"client@user.com\",\n  \"password\": \"password123\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/auth/login",
