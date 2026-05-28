@@ -16,11 +16,18 @@ function Invoke-JsonRequest {
         [hashtable]$Headers = @{},
         $Body = $null
     )
-    $options = @{ Uri = $Url; Method = $Method; Headers = $Headers; ContentType = 'application/json'; ErrorAction = 'Stop' }
+    $options = @{ Uri = $Url; Method = $Method; Headers = $Headers; ContentType = 'application/json'; ErrorAction = 'Continue' }
     if ($null -ne $Body) {
         $options.Body = $Body | ConvertTo-Json -Depth 10
     }
-    return Invoke-RestMethod @options
+    try {
+        return Invoke-RestMethod @options
+    }
+    catch {
+        Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "Response: $($_.ErrorDetails.Message)" -ForegroundColor Red
+        throw $_
+    }
 }
 
 function LoginOrRegister {

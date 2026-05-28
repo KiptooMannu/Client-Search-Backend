@@ -1404,6 +1404,25 @@
             }
           },
           "description": "Refund the escrow payment back to the client."
+        },
+        {
+          "name": "Get All Escrow Payments",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/payments/escrow/all",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "escrow",
+                "all"
+              ]
+            }
+          },
+          "description": "Retrieve all escrow payments (admin only)."
         }
       ]
     },
@@ -1427,6 +1446,52 @@
             }
           },
           "description": "Retrieve the current wallet balance of the authenticated user."
+        },
+        {
+          "name": "Get Wallet Transactions",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/wallet/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "wallet",
+                "transactions"
+              ]
+            }
+          },
+          "description": "Retrieve the authenticated user's wallet transaction history."
+        },
+        {
+          "name": "Withdraw from Wallet",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 1000.0,\n  \"destinationPhoneNumber\": \"254700000001\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/wallet/withdraw",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "wallet",
+                "withdraw"
+              ]
+            }
+          },
+          "description": "Withdraw funds from the worker's wallet to the specified phone number."
         }
       ]
     },

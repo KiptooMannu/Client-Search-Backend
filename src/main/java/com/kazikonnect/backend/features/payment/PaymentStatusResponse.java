@@ -13,5 +13,6 @@ public record PaymentStatusResponse(
     String message,
     String transactionDate,
     String createdAt,
-    String timeoutAt
+    String timeoutAt,
+    String failureReason
 ) {}

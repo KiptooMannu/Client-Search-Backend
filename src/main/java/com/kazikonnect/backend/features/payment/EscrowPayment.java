@@ -28,8 +28,8 @@ public class EscrowPayment {
     @Transient
     private EscrowPaymentStatus previousStatus;
 
-    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "job_request_id", nullable = false, unique = true)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "job_request_id", nullable = false)
     private JobRequest jobRequest;
 
     @Enumerated(EnumType.STRING)
@@ -44,6 +44,12 @@ public class EscrowPayment {
 
     @Column(name = "checkout_request_id", unique = true)
     private String checkoutRequestId;
+
+    @Column(name = "idempotency_key", unique = true)
+    private String idempotencyKey;
+
+    @Column(name = "failure_reason")
+    private String failureReason;
 
     @Column(name = "mpesa_receipt_number")
     private String mpesaReceiptNumber;

@@ -7,6 +7,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -31,6 +32,12 @@ public class PaymentController {
     @GetMapping("/status/{jobId}")
     public ResponseEntity<PaymentStatusResponse> getPaymentStatus(@PathVariable UUID jobId) {
         return ResponseEntity.ok(paymentService.getPaymentStatus(jobId));
+    }
+
+    @GetMapping("/escrow/all")
+    @PreAuthorize("hasAuthority('Admin')")
+    public ResponseEntity<List<PaymentStatusResponse>> getAllEscrowPayments() {
+        return ResponseEntity.ok(paymentService.getAllEscrowPayments());
     }
 
     @PostMapping("/escrow/release")

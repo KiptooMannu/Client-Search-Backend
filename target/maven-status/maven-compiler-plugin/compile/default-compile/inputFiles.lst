@@ -45,6 +45,8 @@ C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\feat
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\payment\EscrowPaymentStatus.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\payment\MpesaCallbackRequest.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\payment\MpesaService.java
+C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\payment\PaymentAuditLog.java
+C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\payment\PaymentAuditLogRepository.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\payment\PaymentController.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\payment\PaymentService.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\payment\PaymentStatusResponse.java
@@ -55,6 +57,9 @@ C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\feat
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\wallet\WalletController.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\wallet\WalletRepository.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\wallet\WalletService.java
+C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\wallet\WalletTransaction.java
+C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\wallet\WalletTransactionRepository.java
+C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\wallet\WalletTransactionType.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\worker\Availability.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\worker\Certification.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\worker\CertificationCreateDTO.java

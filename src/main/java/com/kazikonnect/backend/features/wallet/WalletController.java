@@ -10,7 +10,9 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.security.Principal;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/wallet")
@@ -19,6 +21,7 @@ public class WalletController {
 
     private final UserRepository userRepository;
     private final WalletService walletService;
+    private final WalletTransactionRepository walletTransactionRepository;
 
     @GetMapping("/balance")
     @PreAuthorize("isAuthenticated()")
@@ -34,5 +37,62 @@ public class WalletController {
 
         double balance = walletService.getBalance(user);
         return ResponseEntity.ok(Map.of("balance", balance));
+    }
+
+    @PostMapping("/withdraw")
+    @PreAuthorize("hasAuthority('Worker')")
+    public ResponseEntity<Map<String, Object>> withdraw(
+            @RequestBody WalletWithdrawRequest request,
+            Principal principal) {
+        if (request.amount() <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Withdrawal amount must be greater than zero.");
+        }
+
+        User user = userRepository.findByUsername(principal.getName())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found"));
+
+        walletService.debitWallet(user, request.amount(),
+                "Worker withdrawal to " + request.destinationPhoneNumber(),
+                UUID.randomUUID());
+
+        return ResponseEntity.ok(Map.of(
+                "message", "Withdrawal requested successfully.",
+                "balance", walletService.getBalance(user)
+        ));
+    }
+
+    @GetMapping("/transactions")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<List<WalletTransactionDTO>> getTransactions(Principal principal) {
+        User user = userRepository.findByUsername(principal.getName())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found"));
+
+        return ResponseEntity.ok(walletTransactionRepository.findAllByUserIdOrderByCreatedAtDesc(user.getId()).stream()
+                .map(WalletTransactionDTO::from)
+                .toList());
+    }
+
+    public record WalletWithdrawRequest(double amount, String destinationPhoneNumber) {}
+
+    public record WalletTransactionDTO(
+            String id,
+            String txnType,
+            Double amount,
+            Double balanceAfter,
+            String referenceId,
+            String description,
+            String createdAt
+    ) {
+        public static WalletTransactionDTO from(WalletTransaction transaction) {
+            return new WalletTransactionDTO(
+                    transaction.getId().toString(),
+                    transaction.getTxnType().name(),
+                    transaction.getAmount(),
+                    transaction.getBalanceAfter(),
+                    transaction.getReferenceId() != null ? transaction.getReferenceId().toString() : null,
+                    transaction.getDescription(),
+                    transaction.getCreatedAt() != null ? transaction.getCreatedAt().toString() : null
+            );
+        }
     }
 }

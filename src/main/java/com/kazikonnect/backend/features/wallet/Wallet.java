@@ -30,6 +30,14 @@ public class Wallet {
     @Column(nullable = false)
     private Double balance = 0.0;
 
+    @Builder.Default
+    @Column(name = "total_earned", nullable = false)
+    private Double totalEarned = 0.0;
+
+    @Builder.Default
+    @Column(name = "total_withdrawn", nullable = false)
+    private Double totalWithdrawn = 0.0;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

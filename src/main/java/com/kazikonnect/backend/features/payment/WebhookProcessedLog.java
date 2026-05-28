@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.springframework.lang.NonNull;
 import java.time.LocalDateTime;
 
 @Getter
@@ -19,6 +20,7 @@ public class WebhookProcessedLog {
 
     @Id
     @Column(name = "id", nullable = false, unique = true)
+    @NonNull
     private String id;
 
     @Column(name = "checkout_request_id")
