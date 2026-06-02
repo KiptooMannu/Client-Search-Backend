@@ -40,6 +40,16 @@ public class Auth {
     @Column(name = "is_active")
     private boolean isActive = true;
 
+    @Builder.Default
+    @Column(name = "email_verified")
+    private boolean emailVerified = false;
+
+    @Column(name = "email_verification_token")
+    private String emailVerificationToken;
+
+    @Column(name = "email_verification_token_expiry")
+    private LocalDateTime emailVerificationTokenExpiry;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

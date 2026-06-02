@@ -21,5 +21,5 @@ if (Test-Path $envFile) {
 	}
 }
 
-Write-Host "Starting Kazi Konnect Backend in TEST (H2) mode..." -ForegroundColor Cyan
-& $MVN spring-boot:run "-Dspring-boot.run.profiles=test"
+Write-Host "Starting Kazi Konnect Backend with Neon DB..." -ForegroundColor Cyan
+& $MVN spring-boot:run

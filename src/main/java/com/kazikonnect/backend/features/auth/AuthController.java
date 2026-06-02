@@ -1,6 +1,7 @@
 package com.kazikonnect.backend.features.auth;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import io.swagger.v3.oas.annotations.Operation;
@@ -11,10 +12,13 @@ import jakarta.validation.constraints.*;
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
+@Slf4j
 @Tag(name = "Authentication", description = "Endpoints for user registration and login")
 public class AuthController {
 
     private final AuthService authService;
+    private final UserRepository userRepository;
+    private final AuthRepository authRepository;
 
     @PostMapping("/register")
     @Operation(summary = "Register a new user", description = "Registers a new Client, Worker, or Admin account")
@@ -63,6 +67,100 @@ public class AuthController {
             return ResponseEntity.ok("Password reset successful. Please log in with your new password.");
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/resend-verification")
+    @Operation(summary = "Resend email verification link", description = "Sends a fresh verification email when the original link expired or was lost")
+    public ResponseEntity<?> resendVerification(@Valid @RequestBody ResendVerificationRequest request) {
+        try {
+            String message = authService.resendEmailVerification(request.email());
+            return ResponseEntity.ok(message);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @PostMapping("/verify-email")
+    @Operation(summary = "Verify email address", description = "Verifies the user's email using the verification token from the email")
+    public ResponseEntity<?> verifyEmail(@RequestParam String token) {
+        log.info("Verify-email request received with token: {}", token);
+        try {
+            authService.verifyEmail(token);
+            log.info("Verify-email succeeded for token: {}", token);
+            return ResponseEntity.ok("Email verified successfully. You can now log in.");
+        } catch (Exception e) {
+            log.warn("Verify-email failed for token: {} with error: {}", token, e.getMessage());
+            return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+
+    @GetMapping("/debug/verification-token/{email}")
+    @Operation(summary = "DEBUG: Get verification token by email", description = "DEV ONLY: Returns the verification token for an unverified user (for testing)")
+    public ResponseEntity<?> getVerificationToken(@PathVariable String email) {
+        try {
+            var user = userRepository.findByEmail(email.toLowerCase()).orElse(null);
+            if (user == null) {
+                return ResponseEntity.badRequest().body("User not found");
+            }
+            
+            var auth = authRepository.findByUserId(user.getId()).orElse(null);
+            if (auth == null) {
+                return ResponseEntity.badRequest().body("Auth record not found");
+            }
+            
+            if (auth.isEmailVerified()) {
+                return ResponseEntity.ok(new java.util.HashMap<String, String>() {{
+                    put("message", "Email is already verified");
+                    put("verified", "true");
+                }});
+            }
+            
+            String token = auth.getEmailVerificationToken();
+            if (token == null) {
+                return ResponseEntity.badRequest().body("No verification token found");
+            }
+            
+            String verificationLink = "http://localhost:4200/verify-email?token=" + token;
+            return ResponseEntity.ok(new java.util.HashMap<String, String>() {{
+                put("token", token);
+                put("link", verificationLink);
+                put("email", email);
+            }});
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/debug/create-test-user")
+    @Operation(summary = "DEBUG: Create test user", description = "DEV ONLY: Creates a test user and returns its verification token and link")
+    public ResponseEntity<?> createTestUser(@RequestParam String email) {
+        try {
+            String normalized = email.toLowerCase().trim();
+            String username = normalized.split("@")[0] + System.currentTimeMillis() % 10000;
+            // Minimal test data
+            String firstName = "Rotich";
+            String secondName = "Test";
+            String password = "TempPass123!";
+
+            // Register user (will throw if validation fails)
+            String message = authService.register(username, normalized, password, firstName, secondName, UserRole.CLIENT);
+
+            // Lookup token
+            var user = userRepository.findByEmail(normalized).orElse(null);
+            if (user == null) return ResponseEntity.badRequest().body("User not found after registration");
+            var auth = authRepository.findByUserId(user.getId()).orElse(null);
+            if (auth == null) return ResponseEntity.badRequest().body("Auth record not found after registration");
+            String token = auth.getEmailVerificationToken();
+            String verificationLink = "http://localhost:4200/verify-email?token=" + token;
+
+            return ResponseEntity.ok(new java.util.HashMap<String, String>() {{
+                put("message", message);
+                put("token", token == null ? "" : token);
+                put("link", token == null ? "" : verificationLink);
+            }});
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
         }
     }
 }
@@ -116,4 +214,10 @@ record PasswordResetConfirm(
     @NotBlank(message = "New password is required")
     @Size(min = 8, message = "Password must be at least 8 characters")
     String newPassword
+) {}
+
+record ResendVerificationRequest(
+    @NotBlank(message = "Email is required")
+    @Email(message = "Email must be valid")
+    String email
 ) {}

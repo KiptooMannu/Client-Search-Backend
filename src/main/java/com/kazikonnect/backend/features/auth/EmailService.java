@@ -47,7 +47,8 @@ public class EmailService {
             throw new IllegalArgumentException("Email cannot be null");
         }
 
-        String resetLink = frontendUrl + "/reset-password?token=" + resetToken;
+        String frontendBase = frontendUrl == null ? "http://localhost:4200" : frontendUrl.replaceAll("/+$", "");
+        String resetLink = frontendBase + "/reset-password?token=" + resetToken;
 
         String subject = "Kazi Konnect — Password Reset Request";
 
@@ -57,6 +58,35 @@ public class EmailService {
                 <p><a href="%s">Reset Password</a></p>
                 <p>This link expires in 15 minutes.</p>
                 """.formatted(resetLink);
+
+        sendEmail(email, subject, htmlBody);
+    }
+
+    // =========================
+    // EMAIL VERIFICATION EMAIL
+    // =========================
+    public void sendEmailVerificationEmail(String email, String fullName, String verificationToken) {
+
+        if (email == null || email.isBlank()) {
+            throw new IllegalArgumentException("Email cannot be null");
+        }
+
+        String frontendBase = frontendUrl == null ? "http://localhost:4200" : frontendUrl.replaceAll("/+$", "");
+        String verificationLink = frontendBase + "/verify-email?token=" + verificationToken;
+
+        log.info("Sending email verification for {} with link {}", email, verificationLink);
+
+        String subject = "Verify Your Email - Kazi Konnect";
+
+        String htmlBody = """
+                <p>Hi %s,</p>
+                <p>Welcome to Kazi Konnect! 🎉</p>
+                <p>Please verify your email address by clicking the link below:</p>
+                <p><a href="%s" style="background-color: #2E3192; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block;">Verify Email</a></p>
+                <p>This link expires in 24 hours.</p>
+                <p>If you didn't create this account, you can safely ignore this email.</p>
+                <p>Best regards,<br>The Kazi Konnect Team</p>
+                """.formatted(fullName, verificationLink);
 
         sendEmail(email, subject, htmlBody);
     }

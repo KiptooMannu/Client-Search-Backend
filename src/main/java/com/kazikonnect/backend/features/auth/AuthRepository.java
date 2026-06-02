@@ -7,4 +7,5 @@ import java.util.UUID;
 public interface AuthRepository extends JpaRepository<Auth, UUID> {
     Optional<Auth> findByUserEmail(String email);
     Optional<Auth> findByUserId(UUID userId);
+    Optional<Auth> findByEmailVerificationToken(String token);
 }

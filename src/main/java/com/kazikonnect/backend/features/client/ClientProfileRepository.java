@@ -12,4 +12,6 @@ public interface ClientProfileRepository extends JpaRepository<ClientProfile, UU
 
     List<ClientProfile> findByFullNameContainingIgnoreCaseOrUserEmailContainingIgnoreCase(String fullName,
             String email);
+    
+    void deleteByUserId(UUID userId);
 }

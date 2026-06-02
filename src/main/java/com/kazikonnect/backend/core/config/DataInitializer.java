@@ -6,6 +6,7 @@ import com.kazikonnect.backend.features.worker.*;
 import com.kazikonnect.backend.features.common.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
@@ -42,6 +43,9 @@ public class DataInitializer implements CommandLineRunner {
 
     private static final String PASS = "password123";
 
+    @Value("${app.data-seed.enabled:true}")
+    private boolean shouldSeed;
+
     @Override
     public void run(String... args) throws Exception {
         // Drop the status check constraint to allow new statuses (CANCELLED, IN_PROGRESS)
@@ -52,8 +56,6 @@ public class DataInitializer implements CommandLineRunner {
             log.warn("Could not drop constraint: " + e.getMessage());
         }
 
-        boolean shouldSeed = true; // Enabled for verification
-        
         if (shouldSeed) {
             log.info("--- Starting Database Seeding ---");
             // Seed if no approved workers exist

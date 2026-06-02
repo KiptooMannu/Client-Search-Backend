@@ -16,6 +16,8 @@ public interface WorkerProfileRepository extends JpaRepository<WorkerProfile, UU
        Optional<WorkerProfile> findByUser(User user);
 
        boolean existsByUser(User user);
+       
+       void deleteByUserId(UUID userId);
 
        // Marketplace search — only visible/approved workers (optimized join fetch)
        @Query("SELECT DISTINCT w FROM WorkerProfile w " +

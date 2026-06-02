@@ -7,6 +7,7 @@ import com.kazikonnect.backend.features.client.ClientProfile;
 import com.kazikonnect.backend.features.client.ClientProfileRepository;
 import com.kazikonnect.backend.core.security.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,6 +17,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 @SuppressWarnings("null")
 public class AuthService {
 
@@ -31,8 +33,29 @@ public class AuthService {
     // Verification Marker: Register with 5 arguments
     @Transactional
     public String register(String username, String email, String password, String firstName, String secondName, UserRole role) {
-        if (userRepository.existsByEmail(email)) {
-            throw new RuntimeException("Error: Email '" + email + "' is already in use. Please try a different email or log in.");
+        String normalizedEmail = normalizeEmail(email);
+
+        // Check if email already exists
+        Optional<User> existingUser = userRepository.findByEmail(normalizedEmail);
+        if (existingUser.isPresent()) {
+            User user = existingUser.get();
+            Optional<Auth> existingAuth = authRepository.findByUserId(user.getId());
+            
+            // If user exists and is verified, reject registration
+            if (existingAuth.isPresent() && existingAuth.get().isEmailVerified()) {
+                throw new RuntimeException("Error: Email '" + normalizedEmail + "' is already in use. Please try a different email or log in.");
+            }
+            
+            // If user exists but is unverified, allow re-registration by deleting old record
+            if (existingAuth.isPresent()) {
+                // Delete profiles first (they have FK constraints to users)
+                workerProfileRepository.deleteByUserId(user.getId());
+                clientProfileRepository.deleteByUserId(user.getId());
+                
+                authRepository.delete(existingAuth.get());
+            }
+            userRepository.delete(user);
+            userRepository.flush(); // Ensure deletion is persisted before creating new user
         }
 
         if (userRepository.existsByUsername(username)) {
@@ -47,7 +70,7 @@ public class AuthService {
 
         User user = User.builder()
                 .username(username)
-                .email(email)
+                .email(normalizedEmail)
                 .firstName(firstName)
                 .secondName(secondName)
                 .fullName(fullName)
@@ -55,12 +78,24 @@ public class AuthService {
                 .build();
         user = userRepository.save(user);
 
-        Auth auth = Auth.builder()
-                .user(user)
-                .passwordHash(passwordEncoder.encode(password))
-                .isActive(true)
-                .build();
+        String verificationToken = java.util.UUID.randomUUID().toString();
+
+        Auth auth = new Auth();
+        auth.setUser(user);
+        auth.setPasswordHash(passwordEncoder.encode(password));
+        auth.setActive(true);
+        auth.setEmailVerified(false);
+        auth.setEmailVerificationToken(verificationToken);
+        auth.setEmailVerificationTokenExpiry(LocalDateTime.now().plusHours(24));
+
+        user.setAuth(auth);
+
         authRepository.save(auth);
+        authRepository.flush();
+        log.info("Created auth record {} for user {} with verification token {}", auth.getId(), normalizedEmail, verificationToken);
+        authRepository.findById(auth.getId()).ifPresent(savedAuth ->
+            log.info("Persisted auth row for id {} has token={} verified={}", savedAuth.getId(), savedAuth.getEmailVerificationToken(), savedAuth.isEmailVerified())
+        );
 
         // Initialize Profile based on role
         if (role == UserRole.WORKER) {
@@ -80,16 +115,25 @@ public class AuthService {
             clientProfileRepository.save(clientProfile);
         }
 
-        return "User registered successfully";
+        // Send verification email
+        emailService.sendEmailVerificationEmail(normalizedEmail, fullName, verificationToken);
+
+        return "User registered successfully. Please check your email to verify your account.";
     }
 
     @Transactional
     public AuthResponse login(String email, String password) {
-        Auth auth = authRepository.findByUserEmail(email)
-                .orElseThrow(() -> new RuntimeException("User not found. Please register."));
+        String normalizedEmail = normalizeEmail(email);
+
+        Auth auth = authRepository.findByUserEmail(normalizedEmail)
+                .orElseThrow(() -> new RuntimeException("Invalid email or password."));
 
         if (!auth.isActive()) {
             throw new RuntimeException("Account is suspended. Please contact support.");
+        }
+
+        if (!auth.isEmailVerified()) {
+            throw new RuntimeException("Email not verified. Please verify your email before logging in.");
         }
 
         if (!passwordEncoder.matches(password, auth.getPasswordHash())) {
@@ -127,12 +171,17 @@ public class AuthService {
         );
     }
 
+    private String normalizeEmail(String email) {
+        return Optional.ofNullable(email)
+                .map(String::trim)
+                .map(String::toLowerCase)
+                .filter(str -> !str.isBlank())
+                .orElseThrow(() -> new RuntimeException("Error: Email is required."));
+    }
+
     @Transactional
     public void initializePasswordReset(String email) {
-        String normalizedEmail = Optional.ofNullable(email)
-            .map(String::trim)
-            .filter(str -> !str.isBlank())
-            .orElseThrow(() -> new RuntimeException("Error: Email is required."));
+        String normalizedEmail = normalizeEmail(email);
 
         userRepository.findByEmail(normalizedEmail).ifPresent(user -> {
             String resetToken = java.util.UUID.randomUUID().toString();
@@ -174,6 +223,48 @@ public class AuthService {
 
         // Invalidate token after use
         RESET_TOKENS.remove(resetToken);
+    }
+
+    @Transactional
+    public void verifyEmail(String verificationToken) {
+        log.info("Verifying email token: {}", verificationToken);
+        Auth auth = authRepository.findByEmailVerificationToken(verificationToken)
+                .orElseThrow(() -> new RuntimeException("Error: Invalid or expired verification token. Please request a new verification link or re-register."));
+
+        if (auth.getEmailVerificationTokenExpiry() != null && 
+            LocalDateTime.now().isAfter(auth.getEmailVerificationTokenExpiry())) {
+            log.info("Verification token expired for auth id {} at {}", auth.getId(), auth.getEmailVerificationTokenExpiry());
+            throw new RuntimeException("Error: Verification token has expired. Please request a new verification link.");
+        }
+
+        log.info("Email verification token valid for auth id {}", auth.getId());
+        auth.setEmailVerified(true);
+        auth.setEmailVerificationToken(null);
+        auth.setEmailVerificationTokenExpiry(null);
+        authRepository.save(auth);
+    }
+
+    @Transactional
+    public String resendEmailVerification(String email) {
+        String normalizedEmail = normalizeEmail(email);
+        User user = userRepository.findByEmail(normalizedEmail)
+                .orElseThrow(() -> new RuntimeException("Unable to resend verification: no account found for that email."));
+
+        Auth auth = authRepository.findByUserId(user.getId())
+                .orElseThrow(() -> new RuntimeException("Unable to resend verification: authentication record not found."));
+
+        if (auth.isEmailVerified()) {
+            return "Email is already verified. Please log in.";
+        }
+
+        String verificationToken = java.util.UUID.randomUUID().toString();
+        auth.setEmailVerificationToken(verificationToken);
+        auth.setEmailVerificationTokenExpiry(LocalDateTime.now().plusHours(24));
+        authRepository.save(auth);
+        authRepository.flush();
+
+        emailService.sendEmailVerificationEmail(normalizedEmail, user.getFullName(), verificationToken);
+        return "A new verification link has been sent to " + normalizedEmail + ". Please check your inbox.";
     }
 
     // In-memory token storage (for demo - use Redis/DB in production)
