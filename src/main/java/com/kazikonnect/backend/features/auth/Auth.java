@@ -41,8 +41,8 @@ public class Auth {
     private boolean isActive = true;
 
     @Builder.Default
-    @Column(name = "email_verified")
-    private boolean emailVerified = false;
+    @Column(name = "email_verified", nullable = false)
+    private Boolean emailVerified = false;
 
     @Column(name = "email_verification_token")
     private String emailVerificationToken;

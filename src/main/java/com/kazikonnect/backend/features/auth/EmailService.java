@@ -65,28 +65,25 @@ public class EmailService {
     // =========================
     // EMAIL VERIFICATION EMAIL
     // =========================
-    public void sendEmailVerificationEmail(String email, String fullName, String verificationToken) {
+    public void sendEmailVerificationEmail(String email, String fullName, String otp) {
 
         if (email == null || email.isBlank()) {
             throw new IllegalArgumentException("Email cannot be null");
         }
 
-        String frontendBase = frontendUrl == null ? "http://localhost:4200" : frontendUrl.replaceAll("/+$", "");
-        String verificationLink = frontendBase + "/verify-email?token=" + verificationToken;
-
-        log.info("Sending email verification for {} with link {}", email, verificationLink);
+        log.info("Sending email verification for {} with OTP {}", email, otp);
 
         String subject = "Verify Your Email - Kazi Konnect";
 
         String htmlBody = """
                 <p>Hi %s,</p>
                 <p>Welcome to Kazi Konnect! 🎉</p>
-                <p>Please verify your email address by clicking the link below:</p>
-                <p><a href="%s" style="background-color: #2E3192; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block;">Verify Email</a></p>
-                <p>This link expires in 24 hours.</p>
+                <p>Please verify your email address using the One-Time Password (OTP) below:</p>
+                <h2 style="background-color: #f3f4f6; color: #2E3192; padding: 12px 24px; text-align: center; border-radius: 8px; font-size: 24px; letter-spacing: 4px; display: inline-block; min-width: 150px; margin: 10px 0;">%s</h2>
+                <p>This code expires in 24 hours.</p>
                 <p>If you didn't create this account, you can safely ignore this email.</p>
                 <p>Best regards,<br>The Kazi Konnect Team</p>
-                """.formatted(fullName, verificationLink);
+                """.formatted(fullName, otp);
 
         sendEmail(email, subject, htmlBody);
     }

@@ -1,5 +1,6 @@
 package com.kazikonnect.backend.core.exception;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -15,6 +16,7 @@ import java.util.Map;
  * All exception types are handled explicitly.
  */
 @ControllerAdvice
+@Slf4j
 public class GlobalExceptionHandler {
 
     /**
@@ -36,14 +38,49 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Handles AuthException with explicit HTTP status.
+     */
+    @ExceptionHandler(com.kazikonnect.backend.features.auth.AuthException.class)
+    public ResponseEntity<?> handleAuthException(com.kazikonnect.backend.features.auth.AuthException ex) {
+        return buildErrorResponse(
+            ex.getStatus(),
+            "Authentication Error",
+            ex.getMessage()
+        );
+    }
+
+    /**
+     * Handles JPA transaction/system exceptions and maps them to user-friendly messages.
+     */
+    @ExceptionHandler(org.springframework.orm.jpa.JpaSystemException.class)
+    public ResponseEntity<?> handleJpaSystemException(org.springframework.orm.jpa.JpaSystemException ex) {
+        String message = "A database error occurred while processing your request. Please try again.";
+        Throwable rootCause = ex.getRootCause();
+        if (rootCause != null && rootCause.getMessage() != null) {
+            String causeMessage = rootCause.getMessage().toLowerCase();
+            if (causeMessage.contains("email") && causeMessage.contains("unique")) {
+                message = "This email is already registered. Please use a different email or log in.";
+            } else if (causeMessage.contains("username") && causeMessage.contains("unique")) {
+                message = "That username is already taken. Please choose another one.";
+            }
+        }
+        return buildErrorResponse(
+            HttpStatus.CONFLICT,
+            "Conflict",
+            message
+        );
+    }
+
+    /**
      * Handles RuntimeException - general errors.
      */
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<?> handleRuntimeException(RuntimeException ex) {
+        log.error("Unhandled runtime exception caught by global handler", ex);
         return buildErrorResponse(
-            HttpStatus.BAD_REQUEST,
+            HttpStatus.INTERNAL_SERVER_ERROR,
             "Error",
-            ex.getMessage()
+            "An unexpected error occurred. Please try again later."
         );
     }
 
@@ -62,6 +99,26 @@ public class GlobalExceptionHandler {
     /**
      * Handles IllegalArgumentException.
      */
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    public ResponseEntity<?> handleDataIntegrityViolation(org.springframework.dao.DataIntegrityViolationException ex) {
+        String message = "A database constraint was violated. Please check your registration data.";
+        if (ex.getMostSpecificCause() != null) {
+            String causeMessage = ex.getMostSpecificCause().getMessage();
+            if (causeMessage != null) {
+                if (causeMessage.contains("email") && causeMessage.contains("unique")) {
+                    message = "This email is already registered. Please use a different email or log in.";
+                } else if (causeMessage.contains("username") && causeMessage.contains("unique")) {
+                    message = "That username is already taken. Please choose another one.";
+                }
+            }
+        }
+        return buildErrorResponse(
+            HttpStatus.CONFLICT,
+            "Conflict",
+            message
+        );
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<?> handleIllegalArgument(IllegalArgumentException ex) {
         return buildErrorResponse(
@@ -88,6 +145,7 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<?> handleGenericException(Exception ex) {
+        log.error("Unhandled exception caught by global handler", ex);
         return buildErrorResponse(
             HttpStatus.INTERNAL_SERVER_ERROR,
             "Internal Server Error",
@@ -114,6 +172,7 @@ public class GlobalExceptionHandler {
             String message,
             Map<String, String> validationErrors) {
         Map<String, Object> body = new HashMap<>();
+        body.put("success", false);
         body.put("timestamp", LocalDateTime.now());
         body.put("status", status.value());
         body.put("error", error);

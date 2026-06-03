@@ -8,10 +8,14 @@ import com.kazikonnect.backend.features.client.ClientProfileRepository;
 import com.kazikonnect.backend.core.security.JwtTokenProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import jakarta.persistence.PersistenceException;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -24,6 +28,7 @@ public class AuthService {
     private final UserRepository userRepository;
     private final AuthRepository authRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final WorkerProfileRepository workerProfileRepository;
     private final ClientProfileRepository clientProfileRepository;
     private final PasswordEncoder passwordEncoder;
@@ -33,111 +38,186 @@ public class AuthService {
     // Verification Marker: Register with 5 arguments
     @Transactional
     public String register(String username, String email, String password, String firstName, String secondName, UserRole role) {
+        if (role == UserRole.ADMIN) {
+            throw new com.kazikonnect.backend.features.auth.AuthException("The ADMIN role cannot be selected during public registration.", HttpStatus.BAD_REQUEST);
+        }
+
         String normalizedEmail = normalizeEmail(email);
 
-        // Check if email already exists
-        Optional<User> existingUser = userRepository.findByEmail(normalizedEmail);
-        if (existingUser.isPresent()) {
-            User user = existingUser.get();
-            Optional<Auth> existingAuth = authRepository.findByUserId(user.getId());
-            
-            // If user exists and is verified, reject registration
-            if (existingAuth.isPresent() && existingAuth.get().isEmailVerified()) {
-                throw new RuntimeException("Error: Email '" + normalizedEmail + "' is already in use. Please try a different email or log in.");
-            }
-            
-            // If user exists but is unverified, allow re-registration by deleting old record
-            if (existingAuth.isPresent()) {
-                // Delete profiles first (they have FK constraints to users)
-                workerProfileRepository.deleteByUserId(user.getId());
-                clientProfileRepository.deleteByUserId(user.getId());
-                
-                authRepository.delete(existingAuth.get());
-            }
-            userRepository.delete(user);
-            userRepository.flush(); // Ensure deletion is persisted before creating new user
-        }
-
-        if (userRepository.existsByUsername(username)) {
-            throw new RuntimeException("Error: Username '" + username + "' is already taken. Please choose another one.");
-        }
-
         if (password == null || password.length() < 8) {
-            throw new RuntimeException("Error: Password is too short. It must be at least 8 characters long.");
+            throw new com.kazikonnect.backend.features.auth.AuthException("Password must be at least 8 characters long.", HttpStatus.BAD_REQUEST);
         }
 
         String fullName = firstName + " " + secondName;
 
-        User user = User.builder()
-                .username(username)
-                .email(normalizedEmail)
-                .firstName(firstName)
-                .secondName(secondName)
-                .fullName(fullName)
-                .role(role)
-                .build();
-        user = userRepository.save(user);
+        try {
+            Optional<User> existingUser = userRepository.findByEmailIgnoreCase(normalizedEmail);
 
-        String verificationToken = java.util.UUID.randomUUID().toString();
+            if (existingUser.isPresent()) {
+                User user = existingUser.get();
+                Auth auth = authRepository.findByUserId(user.getId())
+                        .orElseThrow(() -> new com.kazikonnect.backend.features.auth.AuthException("This email is already registered. Please log in or use a different email.", HttpStatus.CONFLICT));
 
-        Auth auth = new Auth();
-        auth.setUser(user);
-        auth.setPasswordHash(passwordEncoder.encode(password));
-        auth.setActive(true);
-        auth.setEmailVerified(false);
-        auth.setEmailVerificationToken(verificationToken);
-        auth.setEmailVerificationTokenExpiry(LocalDateTime.now().plusHours(24));
+                if (Boolean.TRUE.equals(auth.getEmailVerified())) {
+                    throw new com.kazikonnect.backend.features.auth.AuthException("This email is already registered. Please log in or use a different email.", HttpStatus.CONFLICT);
+                }
 
-        user.setAuth(auth);
+                if (userRepository.existsByUsernameIgnoreCase(username) && !user.getUsername().equalsIgnoreCase(username)) {
+                    throw new com.kazikonnect.backend.features.auth.AuthException("That username is already taken. Please choose another one.", HttpStatus.CONFLICT);
+                }
 
-        authRepository.save(auth);
-        authRepository.flush();
-        log.info("Created auth record {} for user {} with verification token {}", auth.getId(), normalizedEmail, verificationToken);
-        authRepository.findById(auth.getId()).ifPresent(savedAuth ->
-            log.info("Persisted auth row for id {} has token={} verified={}", savedAuth.getId(), savedAuth.getEmailVerificationToken(), savedAuth.isEmailVerified())
-        );
+                user.setUsername(username);
+                user.setFirstName(firstName);
+                user.setSecondName(secondName);
+                user.setFullName(fullName);
+                user.setRole(role);
+                user.setEmail(normalizedEmail);
+                user = userRepository.save(user);
+                userRepository.flush();
 
-        // Initialize Profile based on role
-        if (role == UserRole.WORKER) {
-            WorkerProfile workerProfile = WorkerProfile.builder()
-                    .user(user)
+                String verificationToken = String.format("%06d", new java.util.Random().nextInt(900000) + 100000);
+                auth.setPasswordHash(passwordEncoder.encode(password));
+                auth.setActive(true);
+                auth.setEmailVerified(false);
+                auth.setEmailVerificationToken(verificationToken);
+                auth.setEmailVerificationTokenExpiry(LocalDateTime.now().plusHours(24));
+                auth.setUser(user);
+                authRepository.save(auth);
+
+                ensureProfileForRole(user, role, fullName);
+
+                emailService.sendEmailVerificationEmail(normalizedEmail, fullName, verificationToken);
+                return "User registered successfully. Please check your email to verify your account.";
+            }
+
+            if (userRepository.existsByEmailIgnoreCase(normalizedEmail)) {
+                throw new com.kazikonnect.backend.features.auth.AuthException("This email is already registered. Please log in or use a different email.", HttpStatus.CONFLICT);
+            }
+
+            if (userRepository.existsByUsernameIgnoreCase(username)) {
+                throw new com.kazikonnect.backend.features.auth.AuthException("That username is already taken. Please choose another one.", HttpStatus.CONFLICT);
+            }
+
+            User user = User.builder()
+                    .username(username)
+                    .email(normalizedEmail)
+                    .firstName(firstName)
+                    .secondName(secondName)
                     .fullName(fullName)
-                    .status(WorkerStatus.DRAFT)
-                    .isVisible(false)
-                    .isOnline(false)
+                    .role(role)
                     .build();
-            workerProfileRepository.save(workerProfile);
-        } else if (role == UserRole.CLIENT) {
-            ClientProfile clientProfile = ClientProfile.builder()
-                    .user(user)
-                    .fullName(fullName)
-                    .build();
-            clientProfileRepository.save(clientProfile);
+            user = userRepository.save(user);
+            userRepository.flush();
+
+            String verificationToken = String.format("%06d", new java.util.Random().nextInt(900000) + 100000);
+
+            Auth auth = new Auth();
+            auth.setUser(user);
+            auth.setPasswordHash(passwordEncoder.encode(password));
+            auth.setActive(true);
+            auth.setEmailVerified(false);
+            auth.setEmailVerificationToken(verificationToken);
+            auth.setEmailVerificationTokenExpiry(LocalDateTime.now().plusHours(24));
+
+            authRepository.save(auth);
+            authRepository.flush();
+            log.info("Created auth record {} for user {} with verification token {}", auth.getId(), normalizedEmail, verificationToken);
+            authRepository.findById(auth.getId()).ifPresent(savedAuth ->
+                log.info("Persisted auth row for id {} has token={} verified={}", savedAuth.getId(), savedAuth.getEmailVerificationToken(), Boolean.TRUE.equals(savedAuth.getEmailVerified()))
+            );
+
+            ensureProfileForRole(user, role, fullName);
+
+            emailService.sendEmailVerificationEmail(normalizedEmail, fullName, verificationToken);
+
+            return "User registered successfully. Please check your email to verify your account.";
+        } catch (DataIntegrityViolationException | PersistenceException ex) {
+            String message = "Registration failed because email or username already exists. Please use different credentials.";
+            Throwable cause = ex instanceof DataIntegrityViolationException
+                    ? ((DataIntegrityViolationException) ex).getMostSpecificCause()
+                    : ex.getCause();
+
+            while (cause != null) {
+                String causeMessage = cause.getMessage();
+                if (causeMessage != null) {
+                    String normalizedCause = causeMessage.toLowerCase();
+                    if (normalizedCause.contains("username")) {
+                        message = "That username is already taken. Please choose another one.";
+                        break;
+                    } else if (normalizedCause.contains("email")) {
+                        message = "This email is already registered. Please log in or use a different email.";
+                        break;
+                    }
+                }
+                cause = cause.getCause();
+            }
+
+            throw new com.kazikonnect.backend.features.auth.AuthException(message, HttpStatus.CONFLICT);
         }
+    }
 
-        // Send verification email
-        emailService.sendEmailVerificationEmail(normalizedEmail, fullName, verificationToken);
+    private void ensureProfileForRole(User user, UserRole role, String fullName) {
+        Optional<WorkerProfile> workerOpt = workerProfileRepository.findByUserId(user.getId());
+        Optional<ClientProfile> clientOpt = clientProfileRepository.findByUserId(user.getId());
 
-        return "User registered successfully. Please check your email to verify your account.";
+        if (role == UserRole.WORKER) {
+            if (clientOpt.isPresent()) {
+                clientProfileRepository.delete(clientOpt.get());
+                clientProfileRepository.flush();
+            }
+            if (workerOpt.isPresent()) {
+                WorkerProfile workerProfile = workerOpt.get();
+                workerProfile.setFullName(fullName);
+                workerProfile.setStatus(WorkerStatus.DRAFT);
+                workerProfile.setVisible(false);
+                workerProfile.setOnline(false);
+                workerProfileRepository.save(workerProfile);
+            } else {
+                WorkerProfile workerProfile = WorkerProfile.builder()
+                        .user(user)
+                        .fullName(fullName)
+                        .status(WorkerStatus.DRAFT)
+                        .isVisible(false)
+                        .isOnline(false)
+                        .build();
+                workerProfileRepository.save(workerProfile);
+            }
+        } else if (role == UserRole.CLIENT) {
+            if (workerOpt.isPresent()) {
+                workerProfileRepository.delete(workerOpt.get());
+                workerProfileRepository.flush();
+            }
+            if (clientOpt.isPresent()) {
+                ClientProfile clientProfile = clientOpt.get();
+                clientProfile.setFullName(fullName);
+                clientProfileRepository.save(clientProfile);
+            } else {
+                ClientProfile clientProfile = ClientProfile.builder()
+                        .user(user)
+                        .fullName(fullName)
+                        .build();
+                clientProfileRepository.save(clientProfile);
+            }
+        }
     }
 
     @Transactional
     public AuthResponse login(String email, String password) {
         String normalizedEmail = normalizeEmail(email);
 
-        Auth auth = authRepository.findByUserEmail(normalizedEmail)
-                .orElseThrow(() -> new RuntimeException("Invalid email or password."));
+        Auth auth = authRepository.findByUserEmailIgnoreCase(normalizedEmail)
+                .orElseThrow(() -> new com.kazikonnect.backend.features.auth.AuthException("Invalid email or password.", HttpStatus.UNAUTHORIZED));
 
         if (!auth.isActive()) {
-            throw new RuntimeException("Account is suspended. Please contact support.");
+            throw new com.kazikonnect.backend.features.auth.AuthException("Account is suspended. Please contact support.", HttpStatus.FORBIDDEN);
         }
 
-        if (!auth.isEmailVerified()) {
-            throw new RuntimeException("Email not verified. Please verify your email before logging in.");
+        if (!Boolean.TRUE.equals(auth.getEmailVerified())) {
+            throw new com.kazikonnect.backend.features.auth.AuthException("Email not verified. Please verify your email before logging in.", HttpStatus.FORBIDDEN);
         }
 
         if (!passwordEncoder.matches(password, auth.getPasswordHash())) {
-            throw new RuntimeException("Invalid email or password.");
+            throw new com.kazikonnect.backend.features.auth.AuthException("Invalid email or password.", HttpStatus.UNAUTHORIZED);
         }
 
         auth.setLastLogin(LocalDateTime.now());
@@ -174,24 +254,27 @@ public class AuthService {
     private String normalizeEmail(String email) {
         return Optional.ofNullable(email)
                 .map(String::trim)
-                .map(String::toLowerCase)
+                .map(str -> str.toLowerCase(Locale.ROOT))
                 .filter(str -> !str.isBlank())
-                .orElseThrow(() -> new RuntimeException("Error: Email is required."));
+                .orElseThrow(() -> new com.kazikonnect.backend.features.auth.AuthException("Email is required.", HttpStatus.BAD_REQUEST));
     }
 
     @Transactional
     public void initializePasswordReset(String email) {
         String normalizedEmail = normalizeEmail(email);
 
-        userRepository.findByEmail(normalizedEmail).ifPresent(user -> {
-            String resetToken = java.util.UUID.randomUUID().toString();
-            long expiryTime = System.currentTimeMillis() + (15 * 60 * 1000); // 15 minutes expiry
+        userRepository.findByEmailIgnoreCase(normalizedEmail).ifPresent(user -> {
+            String resetToken = UUID.randomUUID().toString();
+            LocalDateTime expiryDate = LocalDateTime.now().plusMinutes(15);
 
-            // Store token in session/cache (simplified for now - stores in memory)
-            // In production, use Redis or a database table for persistence
-            RESET_TOKENS.put(resetToken, new PasswordResetToken(user.getId(), expiryTime));
+            passwordResetTokenRepository.deleteAllByUser(user);
+            PasswordResetToken token = PasswordResetToken.builder()
+                    .token(resetToken)
+                    .user(user)
+                    .expiryDate(expiryDate)
+                    .build();
+            passwordResetTokenRepository.save(token);
 
-            // Send email with reset link
             emailService.sendPasswordResetEmail(normalizedEmail, resetToken);
         });
     }
@@ -199,42 +282,58 @@ public class AuthService {
     @Transactional
     public void resetPassword(String resetToken, String newPassword) {
         if (newPassword == null || newPassword.length() < 8) {
-            throw new RuntimeException("Error: Password must be at least 8 characters long.");
+            throw new com.kazikonnect.backend.features.auth.AuthException("Password must be at least 8 characters long.", HttpStatus.BAD_REQUEST);
         }
 
-        PasswordResetToken tokenData = RESET_TOKENS.get(resetToken);
-        if (tokenData == null) {
-            throw new RuntimeException("Error: Invalid or expired reset token.");
+        PasswordResetToken tokenData = passwordResetTokenRepository.findByToken(resetToken)
+                .orElseThrow(() -> new com.kazikonnect.backend.features.auth.AuthException("The reset link is invalid or has expired.", HttpStatus.BAD_REQUEST));
+
+        if (LocalDateTime.now().isAfter(tokenData.getExpiryDate())) {
+            passwordResetTokenRepository.delete(tokenData);
+            throw new com.kazikonnect.backend.features.auth.AuthException("This reset link has expired. Please request a new password reset email.", HttpStatus.BAD_REQUEST);
         }
 
-        if (System.currentTimeMillis() > tokenData.expiryTime) {
-            RESET_TOKENS.remove(resetToken);
-            throw new RuntimeException("Error: Reset token has expired. Please request a new one.");
-        }
-
-        User user = userRepository.findById(tokenData.userId)
-            .orElseThrow(() -> new RuntimeException("Error: User not found."));
+        User user = tokenData.getUser();
 
         Auth auth = authRepository.findByUserId(user.getId())
-            .orElseThrow(() -> new RuntimeException("Error: Auth record not found."));
+            .orElseThrow(() -> new com.kazikonnect.backend.features.auth.AuthException("Unable to update the password at this time. Please try again.", HttpStatus.INTERNAL_SERVER_ERROR));
 
-        auth.setPasswordHash(new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder().encode(newPassword));
+        auth.setPasswordHash(passwordEncoder.encode(newPassword));
         authRepository.save(auth);
 
-        // Invalidate token after use
-        RESET_TOKENS.remove(resetToken);
+        passwordResetTokenRepository.delete(tokenData);
     }
 
     @Transactional
     public void verifyEmail(String verificationToken) {
         log.info("Verifying email token: {}", verificationToken);
         Auth auth = authRepository.findByEmailVerificationToken(verificationToken)
-                .orElseThrow(() -> new RuntimeException("Error: Invalid or expired verification token. Please request a new verification link or re-register."));
+                .orElseThrow(() -> new com.kazikonnect.backend.features.auth.AuthException("The verification code is invalid or has already been used.", HttpStatus.BAD_REQUEST));
 
         if (auth.getEmailVerificationTokenExpiry() != null && 
             LocalDateTime.now().isAfter(auth.getEmailVerificationTokenExpiry())) {
             log.info("Verification token expired for auth id {} at {}", auth.getId(), auth.getEmailVerificationTokenExpiry());
-            throw new RuntimeException("Error: Verification token has expired. Please request a new verification link.");
+            throw new com.kazikonnect.backend.features.auth.AuthException("This verification code has expired. Please request a new verification code.", HttpStatus.BAD_REQUEST);
+        }
+
+        log.info("Email verification token valid for auth id {}", auth.getId());
+        auth.setEmailVerified(true);
+        auth.setEmailVerificationToken(null);
+        auth.setEmailVerificationTokenExpiry(null);
+        authRepository.save(auth);
+    }
+
+    @Transactional
+    public void verifyEmail(String email, String verificationToken) {
+        log.info("Verifying email: {} with token: {}", email, verificationToken);
+        String normalizedEmail = normalizeEmail(email);
+        Auth auth = authRepository.findByUserEmailIgnoreCaseAndEmailVerificationToken(normalizedEmail, verificationToken)
+                .orElseThrow(() -> new com.kazikonnect.backend.features.auth.AuthException("The verification code is invalid or has already been used.", HttpStatus.BAD_REQUEST));
+
+        if (auth.getEmailVerificationTokenExpiry() != null && 
+            LocalDateTime.now().isAfter(auth.getEmailVerificationTokenExpiry())) {
+            log.info("Verification token expired for auth id {} at {}", auth.getId(), auth.getEmailVerificationTokenExpiry());
+            throw new com.kazikonnect.backend.features.auth.AuthException("This verification code has expired. Please request a new verification code.", HttpStatus.BAD_REQUEST);
         }
 
         log.info("Email verification token valid for auth id {}", auth.getId());
@@ -247,38 +346,26 @@ public class AuthService {
     @Transactional
     public String resendEmailVerification(String email) {
         String normalizedEmail = normalizeEmail(email);
-        User user = userRepository.findByEmail(normalizedEmail)
-                .orElseThrow(() -> new RuntimeException("Unable to resend verification: no account found for that email."));
+        User user = userRepository.findByEmailIgnoreCase(normalizedEmail)
+                .orElseThrow(() -> new com.kazikonnect.backend.features.auth.AuthException("No account was found for that email.", HttpStatus.BAD_REQUEST));
 
         Auth auth = authRepository.findByUserId(user.getId())
-                .orElseThrow(() -> new RuntimeException("Unable to resend verification: authentication record not found."));
+                .orElseThrow(() -> new com.kazikonnect.backend.features.auth.AuthException("Unable to resend verification. Please contact support.", HttpStatus.BAD_REQUEST));
 
-        if (auth.isEmailVerified()) {
+        if (Boolean.TRUE.equals(auth.getEmailVerified())) {
             return "Email is already verified. Please log in.";
         }
 
-        String verificationToken = java.util.UUID.randomUUID().toString();
+        String verificationToken = String.format("%06d", new java.util.Random().nextInt(900000) + 100000);
         auth.setEmailVerificationToken(verificationToken);
         auth.setEmailVerificationTokenExpiry(LocalDateTime.now().plusHours(24));
         authRepository.save(auth);
         authRepository.flush();
 
         emailService.sendEmailVerificationEmail(normalizedEmail, user.getFullName(), verificationToken);
-        return "A new verification link has been sent to " + normalizedEmail + ". Please check your inbox.";
+        return "A new verification code has been sent to " + normalizedEmail + ". Please check your inbox.";
     }
 
-    // In-memory token storage (for demo - use Redis/DB in production)
-    private static final java.util.Map<String, PasswordResetToken> RESET_TOKENS = new java.util.concurrent.ConcurrentHashMap<>();
-
-    private static class PasswordResetToken {
-        UUID userId;
-        long expiryTime;
-        
-        PasswordResetToken(UUID userId, long expiryTime) {
-            this.userId = userId;
-            this.expiryTime = expiryTime;
-        }
-    }
 }
 
 

@@ -51,7 +51,7 @@ com\kazikonnect\backend\core\config\AcceptedStatusModifierAdvice.class
 com\kazikonnect\backend\features\payment\WebhookProcessedLogRepository.class
 com\kazikonnect\backend\features\payment\EscrowPayment.class
 com\kazikonnect\backend\core\security\JwtTokenProvider.class
-com\kazikonnect\backend\features\auth\AuthController$2.class
+com\kazikonnect\backend\features\auth\ApiResponse.class
 com\kazikonnect\backend\features\wallet\Wallet$WalletBuilder.class
 com\kazikonnect\backend\features\worker\CertificationDTO.class
 com\kazikonnect\backend\features\auth\AuthRepository.class
@@ -74,6 +74,7 @@ com\kazikonnect\backend\features\worker\WorkHistory.class
 com\kazikonnect\backend\features\worker\ReviewRepository.class
 com\kazikonnect\backend\core\config\DataInitializer.class
 com\kazikonnect\backend\features\common\NotificationController.class
+com\kazikonnect\backend\features\dev\DevController.class
 com\kazikonnect\backend\core\exception\EntityNotFoundException.class
 com\kazikonnect\backend\features\auth\LoginRequest.class
 com\kazikonnect\backend\features\auth\PasswordResetRequest.class
@@ -92,7 +93,6 @@ com\kazikonnect\backend\features\worker\WorkHistoryRepository.class
 com\kazikonnect\backend\features\wallet\Wallet.class
 com\kazikonnect\backend\features\worker\JobRequestController.class
 com\kazikonnect\backend\core\security\JwtAuthenticationFilter.class
-com\kazikonnect\backend\features\auth\AuthController$1.class
 com\kazikonnect\backend\features\auth\UserRole.class
 com\kazikonnect\backend\features\worker\JobRequestRepository.class
 com\kazikonnect\backend\features\payment\MpesaCallbackRequest$Item.class
@@ -102,6 +102,7 @@ com\kazikonnect\backend\features\payment\PaymentAuditLog.class
 com\kazikonnect\backend\features\auth\AuthController.class
 com\kazikonnect\backend\features\worker\WorkerProfileRepository.class
 com\kazikonnect\backend\features\admin\AdminLog$AdminLogBuilder.class
+com\kazikonnect\backend\features\auth\PasswordResetToken$PasswordResetTokenBuilder.class
 com\kazikonnect\backend\features\payment\PaymentController$StkPushRequest.class
 com\kazikonnect\backend\features\wallet\WalletTransactionRepository.class
 com\kazikonnect\backend\features\worker\WorkerProfileUpdateRequest.class
@@ -111,6 +112,7 @@ com\kazikonnect\backend\features\wallet\WalletTransaction.class
 com\kazikonnect\backend\features\worker\Review$ReviewBuilder.class
 com\kazikonnect\backend\features\payment\WebhookProcessedLog$WebhookProcessedLogBuilder.class
 com\kazikonnect\backend\features\payment\MpesaService$1.class
+com\kazikonnect\backend\features\auth\PasswordResetTokenRepository.class
 com\kazikonnect\backend\features\common\NotificationRepository.class
 com\kazikonnect\backend\features\wallet\WalletRepository.class
 com\kazikonnect\backend\features\worker\Availability.class
@@ -122,12 +124,13 @@ com\kazikonnect\backend\features\worker\Certification$CertificationBuilder.class
 com\kazikonnect\backend\features\admin\AdminLog.class
 com\kazikonnect\backend\features\common\SettingsController.class
 com\kazikonnect\backend\core\config\WebSocketConfig.class
+com\kazikonnect\backend\features\auth\AuthException.class
 com\kazikonnect\backend\features\auth\UserRepository.class
 com\kazikonnect\backend\features\wallet\WalletController$WalletWithdrawRequest.class
+com\kazikonnect\backend\features\auth\PasswordResetToken.class
 com\kazikonnect\backend\features\auth\RefreshToken.class
 com\kazikonnect\backend\features\auth\PasswordResetConfirm.class
 com\kazikonnect\backend\features\worker\JobRequest$JobRequestBuilder.class
-com\kazikonnect\backend\features\auth\AuthService$PasswordResetToken.class
 com\kazikonnect\backend\features\common\HealthController.class
 com\kazikonnect\backend\features\worker\Review.class
 com\kazikonnect\backend\features\worker\Skill$SkillBuilder.class

@@ -14,11 +14,15 @@ C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\core
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\admin\AdminController.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\admin\AdminLog.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\admin\AdminLogRepository.java
+C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\auth\ApiResponse.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\auth\Auth.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\auth\AuthController.java
+C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\auth\AuthException.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\auth\AuthRepository.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\auth\AuthService.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\auth\EmailService.java
+C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\auth\PasswordResetToken.java
+C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\auth\PasswordResetTokenRepository.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\auth\RefreshToken.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\auth\RefreshTokenRepository.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\auth\User.java
@@ -40,6 +44,7 @@ C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\feat
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\common\NotificationRepository.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\common\SettingsController.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\common\UserContactDTO.java
+C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\dev\DevController.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\payment\EscrowPayment.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\payment\EscrowPaymentRepository.java
 C:\Users\User\Desktop\Web app\backend\src\main\java\com\kazikonnect\backend\features\payment\EscrowPaymentStatus.java
