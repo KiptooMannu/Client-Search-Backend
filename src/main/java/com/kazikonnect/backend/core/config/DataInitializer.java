@@ -343,8 +343,9 @@ public class DataInitializer implements CommandLineRunner {
             u = userRepository.save(builder.build());
         }
 
-        // Check if auth already exists
-        if (!authRepository.existsByUser(u)) {
+        // Check if auth already exists - using findByUserId instead of existsByUser
+        Optional<Auth> existingAuth = authRepository.findByUserId(u.getId());
+        if (existingAuth.isEmpty()) {
             authRepository.save(Auth.builder().user(u)
                     .passwordHash(passwordEncoder.encode(PASS)).isActive(true).build());
         }
@@ -401,8 +402,9 @@ public class DataInitializer implements CommandLineRunner {
         }
 
         if (withDocs) {
-            long docCount = documentRepository.countByWorker(profile);
-            if (docCount == 0) {
+            // Check if documents already exist for this worker - using findAllByWorkerId
+            List<Document> existingDocs = documentRepository.findAllByWorkerId(profile.getId());
+            if (existingDocs.isEmpty()) {
                 documentRepository.save(Document.builder()
                         .worker(profile)
                         .name("National ID")
@@ -468,12 +470,15 @@ public class DataInitializer implements CommandLineRunner {
             u = userRepository.save(builder.build());
         }
 
-        if (!authRepository.existsByUser(u)) {
+        // Check if auth already exists - using findByUserId
+        Optional<Auth> existingAuth = authRepository.findByUserId(u.getId());
+        if (existingAuth.isEmpty()) {
             authRepository.save(Auth.builder().user(u)
                     .passwordHash(passwordEncoder.encode(PASS)).isActive(true).build());
         }
 
-        Optional<ClientProfile> existingProfile = clientProfileRepository.findByUser(u);
+        // Check if client profile already exists - using findByUserId
+        Optional<ClientProfile> existingProfile = clientProfileRepository.findByUserId(u.getId());
         if (existingProfile.isEmpty()) {
             clientProfileRepository.save(ClientProfile.builder()
                     .user(u).fullName(profileName).phoneNumber(phone).build());
