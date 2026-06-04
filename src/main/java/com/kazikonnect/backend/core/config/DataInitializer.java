@@ -48,7 +48,8 @@ public class DataInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        // Drop the status check constraint to allow new statuses (CANCELLED, IN_PROGRESS)
+        // Drop the status check constraint to allow new statuses (CANCELLED,
+        // IN_PROGRESS)
         try {
             jdbcTemplate.execute("ALTER TABLE job_requests DROP CONSTRAINT IF EXISTS job_requests_status_check");
             log.info("Dropped job_requests_status_check constraint for compatibility.");
@@ -67,14 +68,14 @@ public class DataInitializer implements CommandLineRunner {
                 seedBulkWorkers();
                 seedPendingWorkers();
                 seedBulkClients();
-                
+
                 // Only refresh interactions during full seed
                 seedInteractions();
             }
-            
+
             // Always run name cleanup to ensure "Unknown" is replaced by real names
             fixExistingUserNames();
-            
+
             log.info("--- Database Seeding Complete ---");
         } else {
             log.info("--- Database Seeding Skipped (shouldSeed = false) ---");
@@ -83,30 +84,31 @@ public class DataInitializer implements CommandLineRunner {
 
     private void seedPendingWorkers() {
         log.info("--- Seeding Pending Workers for Verification ---");
-        
+
         // 1. Fully Complete Pending Worker
-        createWorkerStatus("emmanuel_worker", "emmanuel@worker.com", "Emmanuel Otieno", "Plumbing", 25.0, 
-            "https://images.unsplash.com/photo-1540569014015-19a7be504e3a?q=80&w=2000&auto=format&fit=crop",
-            "Professional plumber with 10 years of experience looking for new opportunities.", WorkerStatus.PENDING, true);
+        createWorkerStatus("emmanuel_worker", "emmanuel@worker.com", "Emmanuel Otieno", "Plumbing", 25.0,
+                "https://images.unsplash.com/photo-1540569014015-19a7be504e3a?q=80&w=2000&auto=format&fit=crop",
+                "Professional plumber with 10 years of experience looking for new opportunities.", WorkerStatus.PENDING,
+                true);
 
         // 2. Worker with ID verification pending
         createWorkerStatus("jane_electric", "jane@power.com", "Jane Doe", "Electrical Wiring", 35.0,
-            "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=2000&auto=format&fit=crop",
-            "Licensed electrician specializing in industrial circuits.", WorkerStatus.PENDING, true);
+                "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=2000&auto=format&fit=crop",
+                "Licensed electrician specializing in industrial circuits.", WorkerStatus.PENDING, true);
 
         // 3. Rejected worker (demonstrate re-submission)
         createWorkerStatus("mike_rejected", "mike.r@worker.com", "Mike Rejected", "Masonry", 22.0,
-            "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=2000&auto=format&fit=crop",
-            "I was rejected before but I've updated my documents.", WorkerStatus.REJECTED, true);
+                "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=2000&auto=format&fit=crop",
+                "I was rejected before but I've updated my documents.", WorkerStatus.REJECTED, true);
 
         // 4. Worker without documents (DRAFT status)
         createWorkerStatus("draft_worker", "draft@worker.com", "Draft User", "General Repairs", 15.0,
-            null, "I am just starting out and haven't uploaded docs yet.", WorkerStatus.DRAFT, false);
+                null, "I am just starting out and haven't uploaded docs yet.", WorkerStatus.DRAFT, false);
 
         // 5. New Pending: Interior Design
         createWorkerStatus("alice_design", "alice@design.com", "Alice Mwangi", "Interior Design", 45.0,
-            "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=2000&auto=format&fit=crop",
-            "Creative designer focusing on modern African aesthetics.", WorkerStatus.PENDING, true);
+                "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=2000&auto=format&fit=crop",
+                "Creative designer focusing on modern African aesthetics.", WorkerStatus.PENDING, true);
     }
 
     private void seedInteractions() {
@@ -135,32 +137,32 @@ public class DataInitializer implements CommandLineRunner {
 
         Random random = new Random();
         String[] taskDescriptions = {
-            "Fix leaking pipe in the master bathroom.",
-            "Install 5 new LED ceiling lights in the living room.",
-            "Repair broken kitchen cabinet hinges.",
-            "Repaint the guest bedroom walls (Light Gray).",
-            "Emergency repair of a blown fuse box.",
-            "Install new hardwood flooring in the study room.",
-            "Design a modern open-plan kitchen layout.",
-            "Mount 65-inch TV on a concrete wall.",
-            "General maintenance of garden irrigation system."
+                "Fix leaking pipe in the master bathroom.",
+                "Install 5 new LED ceiling lights in the living room.",
+                "Repair broken kitchen cabinet hinges.",
+                "Repaint the guest bedroom walls (Light Gray).",
+                "Emergency repair of a blown fuse box.",
+                "Install new hardwood flooring in the study room.",
+                "Design a modern open-plan kitchen layout.",
+                "Mount 65-inch TV on a concrete wall.",
+                "General maintenance of garden irrigation system."
         };
 
-        JobStatus[] statuses = { 
-            JobStatus.PENDING, 
-            JobStatus.ACCEPTED, 
-            JobStatus.IN_PROGRESS, 
-            JobStatus.SUBMITTED, 
-            JobStatus.REVISION_REQUESTED, 
-            JobStatus.APPROVED, 
-            JobStatus.COMPLETED, 
-            JobStatus.DISPUTED, 
-            JobStatus.CANCELLED 
+        JobStatus[] statuses = {
+                JobStatus.PENDING,
+                JobStatus.ACCEPTED,
+                JobStatus.IN_PROGRESS,
+                JobStatus.SUBMITTED,
+                JobStatus.REVISION_REQUESTED,
+                JobStatus.APPROVED,
+                JobStatus.COMPLETED,
+                JobStatus.DISPUTED,
+                JobStatus.CANCELLED
         };
 
         for (int i = 0; i < statuses.length; i++) {
             JobStatus status = statuses[i];
-            
+
             // 1. Create Job Request
             JobRequest job = JobRequest.builder()
                     .client(mainClient)
@@ -186,16 +188,16 @@ public class DataInitializer implements CommandLineRunner {
             // 3. Add Messages
             if (mainWorker.getUser() != null) {
                 String[] clientMessages = {
-                    "Hi, when can you start on the " + job.getDescription() + "?",
-                    "Is the project still on schedule?",
-                    "I noticed a small issue with the alignment.",
-                    "The work looks great so far!"
+                        "Hi, when can you start on the " + job.getDescription() + "?",
+                        "Is the project still on schedule?",
+                        "I noticed a small issue with the alignment.",
+                        "The work looks great so far!"
                 };
                 String[] workerMessages = {
-                    "I can start tomorrow morning at 9 AM.",
-                    "Yes, I should be done by Wednesday.",
-                    "No problem, I will fix that immediately.",
-                    "Thank you! I've just submitted the work for your approval."
+                        "I can start tomorrow morning at 9 AM.",
+                        "Yes, I should be done by Wednesday.",
+                        "No problem, I will fix that immediately.",
+                        "Thank you! I've just submitted the work for your approval."
                 };
 
                 for (int m = 0; m < 2; m++) {
@@ -205,7 +207,7 @@ public class DataInitializer implements CommandLineRunner {
                             .content(clientMessages[random.nextInt(clientMessages.length)])
                             .isRead(true)
                             .build());
-                    
+
                     messageRepository.save(Message.builder()
                             .sender(mainWorker.getUser())
                             .receiver(mainClient)
@@ -227,7 +229,8 @@ public class DataInitializer implements CommandLineRunner {
                 notificationRepository.save(Notification.builder()
                         .user(mainClient)
                         .title("Dispute Opened")
-                        .message("Your dispute for job #" + job.getId().toString().substring(0, 8) + " is under review.")
+                        .message(
+                                "Your dispute for job #" + job.getId().toString().substring(0, 8) + " is under review.")
                         .type("WARNING")
                         .build());
             } else if (status == JobStatus.REVISION_REQUESTED) {
@@ -267,7 +270,7 @@ public class DataInitializer implements CommandLineRunner {
                 .fullName("System Administrator").role(UserRole.ADMIN).build());
         authRepository.save(Auth.builder().user(u)
                 .passwordHash(passwordEncoder.encode("admin123")).isActive(true).build());
-        
+
         // Seed Admin Notifications
         notificationRepository.save(Notification.builder()
                 .user(u)
@@ -275,7 +278,7 @@ public class DataInitializer implements CommandLineRunner {
                 .message("System is ready. 5 workers are pending verification.")
                 .type("INFO")
                 .build());
-        
+
         notificationRepository.save(Notification.builder()
                 .user(u)
                 .title("System Audit")
@@ -301,24 +304,57 @@ public class DataInitializer implements CommandLineRunner {
 
     private void createWorker(String username, String email, String fullName, String category, double rate, String img,
             String bio, WorkerStatus status) {
-        createWorkerStatus(username, email, fullName, category, rate, img, bio, status, status == WorkerStatus.APPROVED);
+        createWorkerStatus(username, email, fullName, category, rate, img, bio, status,
+                status == WorkerStatus.APPROVED);
     }
 
-    private void createWorkerStatus(String username, String email, String fullName, String category, double rate, String img, String bio, WorkerStatus status, boolean withDocs) {
-        if (userRepository.existsByEmail(email)) return;
+    private void createWorkerStatus(String username, String email, String fullName, String category, double rate,
+            String img, String bio, WorkerStatus status, boolean withDocs) {
+        if (userRepository.existsByEmail(email)) {
+            log.info("Worker with email {} already exists, skipping creation", email);
+            return;
+        }
 
         String[] parts = fullName.split(" ", 2);
         String fName = parts[0];
         String sName = parts.length > 1 ? parts[1] : "";
 
-        User u = userRepository.save(User.builder()
-                .id(fixedUserIdForEmail(email))
-                .username(username).email(email)
-                .firstName(fName).secondName(sName).fullName(fullName)
-                .role(UserRole.WORKER).build());
+        // Check if user with specific ID already exists before saving
+        UUID userId = fixedUserIdForEmail(email);
+        Optional<User> existingUser = userId != null ? userRepository.findById(userId) : Optional.empty();
 
-        authRepository.save(Auth.builder().user(u)
-                .passwordHash(passwordEncoder.encode(PASS)).isActive(true).build());
+        User u;
+        if (existingUser.isPresent()) {
+            u = existingUser.get();
+            log.info("User with ID {} already exists, using existing user", userId);
+        } else {
+            User.UserBuilder builder = User.builder()
+                    .username(username)
+                    .email(email)
+                    .firstName(fName)
+                    .secondName(sName)
+                    .fullName(fullName)
+                    .role(UserRole.WORKER);
+
+            if (userId != null) {
+                builder.id(userId);
+            }
+
+            u = userRepository.save(builder.build());
+        }
+
+        // Check if auth already exists
+        if (!authRepository.existsByUser(u)) {
+            authRepository.save(Auth.builder().user(u)
+                    .passwordHash(passwordEncoder.encode(PASS)).isActive(true).build());
+        }
+
+        // Check if worker profile already exists
+        Optional<WorkerProfile> existingProfile = workerProfileRepository.findByUser(u);
+        if (existingProfile.isPresent()) {
+            log.info("Worker profile for {} already exists, skipping creation", email);
+            return;
+        }
 
         WorkerProfile profile = workerProfileRepository.save(WorkerProfile.builder()
                 .user(u)
@@ -336,33 +372,51 @@ public class DataInitializer implements CommandLineRunner {
                 .build());
 
         // Add Skills
-        Set<Skill> skills = skillRepository.isPresent() ? 
-            skillRepository.get().findAll().stream().limit(3).collect(Collectors.toSet()) : new java.util.HashSet<>();
+        Set<Skill> skills = skillRepository.isPresent()
+                ? skillRepository.get().findAll().stream().limit(3).collect(Collectors.toSet())
+                : new java.util.HashSet<>();
         profile.setSkills(skills);
         workerProfileRepository.save(profile);
 
-        // Add Work History
-        jdbcTemplate.update("INSERT INTO worker_work_history (id, worker_id, company, role, period, description) VALUES (?, ?, ?, ?, ?, ?)",
-                UUID.randomUUID(), profile.getId(), "Elite " + category + " Solutions", "Senior " + category, "Jan 2020 - Dec 2023", "Handled high-end projects across the city with exceptional quality.");
+        // Add Work History (check if exists)
+        int workHistoryCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM worker_work_history WHERE worker_id = ?",
+                Integer.class, profile.getId());
+        if (workHistoryCount == 0) {
+            jdbcTemplate.update(
+                    "INSERT INTO worker_work_history (id, worker_id, company, role, period, description) VALUES (?, ?, ?, ?, ?, ?)",
+                    UUID.randomUUID(), profile.getId(), "Elite " + category + " Solutions", "Senior " + category,
+                    "Jan 2020 - Dec 2023", "Handled high-end projects across the city with exceptional quality.");
+        }
 
-        // Add Certification
-        jdbcTemplate.update("INSERT INTO worker_certifications (id, worker_id, name, issuer, issue_year) VALUES (?, ?, ?, ?, ?)",
-                UUID.randomUUID(), profile.getId(), "Certified " + category + " Specialist", "National Industrial Training Authority", 2019);
+        // Add Certification (check if exists)
+        int certCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM worker_certifications WHERE worker_id = ?",
+                Integer.class, profile.getId());
+        if (certCount == 0) {
+            jdbcTemplate.update(
+                    "INSERT INTO worker_certifications (id, worker_id, name, issuer, issue_year) VALUES (?, ?, ?, ?, ?)",
+                    UUID.randomUUID(), profile.getId(), "Certified " + category + " Specialist",
+                    "National Industrial Training Authority", 2019);
+        }
 
         if (withDocs) {
-            documentRepository.save(Document.builder()
-                    .worker(profile)
-                    .name("National ID")
-                    .type("Identification")
-                    .documentUrl("https://res.cloudinary.com/demo/image/upload/v1/sample.jpg")
-                    .build());
-            
-            documentRepository.save(Document.builder()
-                    .worker(profile)
-                    .name("Trade Certificate")
-                    .type("Certification")
-                    .documentUrl("https://res.cloudinary.com/demo/image/upload/v1/sample.jpg")
-                    .build());
+            long docCount = documentRepository.countByWorker(profile);
+            if (docCount == 0) {
+                documentRepository.save(Document.builder()
+                        .worker(profile)
+                        .name("National ID")
+                        .type("Identification")
+                        .documentUrl("https://res.cloudinary.com/demo/image/upload/v1/sample.jpg")
+                        .build());
+
+                documentRepository.save(Document.builder()
+                        .worker(profile)
+                        .name("Trade Certificate")
+                        .type("Certification")
+                        .documentUrl("https://res.cloudinary.com/demo/image/upload/v1/sample.jpg")
+                        .build());
+            }
         }
 
         log.info("Seeded rich {} worker: {}", status, email);
@@ -382,21 +436,49 @@ public class DataInitializer implements CommandLineRunner {
 
     private void createClient(String username, String email, String fullName,
             String profileName, String phone) {
-        if (userRepository.existsByEmail(email))
+        if (userRepository.existsByEmail(email)) {
+            log.info("Client with email {} already exists, skipping creation", email);
             return;
+        }
+
         String[] parts = fullName.split(" ", 2);
         String fName = parts[0];
         String sName = parts.length > 1 ? parts[1] : "";
 
-        User u = userRepository.save(User.builder()
-                .id(fixedUserIdForEmail(email))
-                .username(username).email(email)
-                .firstName(fName).secondName(sName).fullName(fullName)
-                .role(UserRole.CLIENT).build());
-        authRepository.save(Auth.builder().user(u)
-                .passwordHash(passwordEncoder.encode(PASS)).isActive(true).build());
-        clientProfileRepository.save(ClientProfile.builder()
-                .user(u).fullName(profileName).phoneNumber(phone).build());
+        UUID userId = fixedUserIdForEmail(email);
+        Optional<User> existingUser = userId != null ? userRepository.findById(userId) : Optional.empty();
+
+        User u;
+        if (existingUser.isPresent()) {
+            u = existingUser.get();
+            log.info("User with ID {} already exists, using existing user", userId);
+        } else {
+            User.UserBuilder builder = User.builder()
+                    .username(username)
+                    .email(email)
+                    .firstName(fName)
+                    .secondName(sName)
+                    .fullName(fullName)
+                    .role(UserRole.CLIENT);
+
+            if (userId != null) {
+                builder.id(userId);
+            }
+
+            u = userRepository.save(builder.build());
+        }
+
+        if (!authRepository.existsByUser(u)) {
+            authRepository.save(Auth.builder().user(u)
+                    .passwordHash(passwordEncoder.encode(PASS)).isActive(true).build());
+        }
+
+        Optional<ClientProfile> existingProfile = clientProfileRepository.findByUser(u);
+        if (existingProfile.isEmpty()) {
+            clientProfileRepository.save(ClientProfile.builder()
+                    .user(u).fullName(profileName).phoneNumber(phone).build());
+        }
+
         log.info("Seeded client: {}", email);
     }
 
@@ -445,7 +527,9 @@ public class DataInitializer implements CommandLineRunner {
             int both = userRepository.updateFullNamesFromFirstAndSecond();
             int first = userRepository.updateFullNamesFromFirstOnly();
             int fallback = userRepository.updateFullNamesFromUsername();
-            log.info("Name cleanup results: {} fixed with full name, {} fixed with first name, {} fixed with username fallback.", both, first, fallback);
+            log.info(
+                    "Name cleanup results: {} fixed with full name, {} fixed with first name, {} fixed with username fallback.",
+                    both, first, fallback);
         } catch (Exception e) {
             log.error("Failed to run bulk name cleanup: {}", e.getMessage());
         }
