@@ -343,7 +343,7 @@ public class DataInitializer implements CommandLineRunner {
             u = userRepository.save(builder.build());
         }
 
-        // Check if auth already exists - using findByUserId instead of existsByUser
+        // Check if auth already exists - using findByUserId
         Optional<Auth> existingAuth = authRepository.findByUserId(u.getId());
         if (existingAuth.isEmpty()) {
             authRepository.save(Auth.builder().user(u)

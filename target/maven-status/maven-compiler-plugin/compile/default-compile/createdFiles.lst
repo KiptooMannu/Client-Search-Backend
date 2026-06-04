@@ -67,6 +67,7 @@ com\kazikonnect\backend\core\config\JwtChannelInterceptor.class
 com\kazikonnect\backend\features\worker\Certification.class
 com\kazikonnect\backend\features\client\ClientController.class
 com\kazikonnect\backend\core\config\CloudinaryConfig.class
+com\kazikonnect\backend\features\auth\ResendVerificationRequest.class
 com\kazikonnect\backend\features\worker\JobRequest.class
 com\kazikonnect\backend\features\payment\MpesaCallbackRequest$Body.class
 com\kazikonnect\backend\features\payment\WebhookProcessedLog.class
