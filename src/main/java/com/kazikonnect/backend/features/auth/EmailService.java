@@ -41,23 +41,22 @@ public class EmailService {
     // =========================
     // PASSWORD RESET EMAIL
     // =========================
-    public void sendPasswordResetEmail(String email, String resetToken) {
+    public void sendPasswordResetEmail(String email, String otp) {
 
         if (email == null || email.isBlank()) {
             throw new IllegalArgumentException("Email cannot be null");
         }
 
-        String frontendBase = frontendUrl == null ? "http://localhost:4200" : frontendUrl.replaceAll("/+$", "");
-        String resetLink = frontendBase + "/reset-password?token=" + resetToken;
-
         String subject = "Kazi Konnect — Password Reset Request";
 
         String htmlBody = """
                 <p>Hi there,</p>
-                <p>Click below to reset your password:</p>
-                <p><a href="%s">Reset Password</a></p>
-                <p>This link expires in 15 minutes.</p>
-                """.formatted(resetLink);
+                <p>Please reset your password using the One-Time Password (OTP) below:</p>
+                <h2 style="background-color: #f3f4f6; color: #2E3192; padding: 12px 24px; text-align: center; border-radius: 8px; font-size: 24px; letter-spacing: 4px; display: inline-block; min-width: 150px; margin: 10px 0;">%s</h2>
+                <p>This code expires in 15 minutes.</p>
+                <p>If you didn't request a password reset, you can safely ignore this email.</p>
+                <p>Best regards,<br>The Kazi Konnect Team</p>
+                """.formatted(otp);
 
         sendEmail(email, subject, htmlBody);
     }

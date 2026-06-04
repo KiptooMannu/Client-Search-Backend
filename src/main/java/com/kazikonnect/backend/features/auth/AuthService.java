@@ -264,7 +264,7 @@ public class AuthService {
         String normalizedEmail = normalizeEmail(email);
 
         userRepository.findByEmailIgnoreCase(normalizedEmail).ifPresent(user -> {
-            String resetToken = UUID.randomUUID().toString();
+            String resetToken = String.format("%06d", new java.util.Random().nextInt(900000) + 100000);
             LocalDateTime expiryDate = LocalDateTime.now().plusMinutes(15);
 
             passwordResetTokenRepository.deleteAllByUser(user);
@@ -286,11 +286,11 @@ public class AuthService {
         }
 
         PasswordResetToken tokenData = passwordResetTokenRepository.findByToken(resetToken)
-                .orElseThrow(() -> new com.kazikonnect.backend.features.auth.AuthException("The reset link is invalid or has expired.", HttpStatus.BAD_REQUEST));
+                .orElseThrow(() -> new com.kazikonnect.backend.features.auth.AuthException("The verification code is invalid or has expired.", HttpStatus.BAD_REQUEST));
 
         if (LocalDateTime.now().isAfter(tokenData.getExpiryDate())) {
             passwordResetTokenRepository.delete(tokenData);
-            throw new com.kazikonnect.backend.features.auth.AuthException("This reset link has expired. Please request a new password reset email.", HttpStatus.BAD_REQUEST);
+            throw new com.kazikonnect.backend.features.auth.AuthException("This verification code has expired. Please request a new verification code.", HttpStatus.BAD_REQUEST);
         }
 
         User user = tokenData.getUser();
