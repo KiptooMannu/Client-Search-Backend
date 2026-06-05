@@ -160,4 +160,23 @@
 			</plugin>
 		</plugins>
 	</build>
+
+	<!-- Maven Profiles for different database configurations -->
+	<profiles>
+		<profile>
+			<id>h2</id>
+			<properties>
+				<spring.profiles.active>h2</spring.profiles.active>
+			</properties>
+		</profile>
+		<profile>
+			<id>neon</id>
+			<activation>
+				<activeByDefault>true</activeByDefault>
+			</activation>
+			<properties>
+				<spring.profiles.active>default</spring.profiles.active>
+			</properties>
+		</profile>
+	</profiles>
 </project>
