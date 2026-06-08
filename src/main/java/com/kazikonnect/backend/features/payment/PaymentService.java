@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.springframework.dao.DataIntegrityViolationException;
 
 @Service
 @RequiredArgsConstructor
@@ -54,15 +55,16 @@ public class PaymentService {
         }
 
         String normalizedPhone = mpesaService.normalizePhoneNumber(phoneNumber);
-        StkPushResponse pushResponse = mpesaService.initiateStkPush(normalizedPhone, amount, jobId.toString(),
-                "Escrow payment for job " + jobId);
 
         Optional<EscrowPayment> latestPayment = escrowPaymentRepository.findTopByJobRequestIdOrderByCreatedAtDesc(jobId);
         if (latestPayment.isPresent() && (latestPayment.get().getStatus() == EscrowPaymentStatus.PENDING
-                || latestPayment.get().getStatus() == EscrowPaymentStatus.ESCROWED
-                || latestPayment.get().getStatus() == EscrowPaymentStatus.SUCCESS)) {
-            throw new RuntimeException("A payment is already pending or held for this job. Please resolve the existing escrow before retrying.");
+            || latestPayment.get().getStatus() == EscrowPaymentStatus.ESCROWED
+            || latestPayment.get().getStatus() == EscrowPaymentStatus.SUCCESS)) {
+            throw new RuntimeException("A payment is already pending or captured for this job. Please wait for completion before retrying.");
         }
+
+        StkPushResponse pushResponse = mpesaService.initiateStkPush(normalizedPhone, amount, jobId.toString(),
+            "M-Pesa payment for job " + jobId);
 
         if (pushResponse.checkoutRequestId() == null || pushResponse.checkoutRequestId().isBlank()) {
             throw new RuntimeException("Failed to obtain MPESA checkout request id for job " + jobId);
@@ -98,7 +100,7 @@ public class PaymentService {
                     null,
                     null,
                     null,
-                    "No escrow payment found for this job.",
+                    "No payment record found for this job.",
                     null,
                     null,
                     null,
@@ -107,21 +109,28 @@ public class PaymentService {
         }
 
         EscrowPayment payment = paymentOpt.get();
+        // Map internal payment enum to simplified frontend statuses
+        String mappedStatus = switch (payment.getStatus()) {
+            case PENDING -> "PENDING";
+            case SUCCESS, ESCROWED, RELEASED -> "PAID";
+            case REFUNDED, FAILED -> "FAILED";
+        };
+
         return new PaymentStatusResponse(
-                payment.getStatus().name(),
-                payment.getId().toString(),
-                payment.getJobRequest().getId().toString(),
-                payment.getAmount(),
-                payment.getPhoneNumber(),
-                payment.getCheckoutRequestId(),
-                payment.getMpesaReceiptNumber(),
-                payment.getPlatformFee(),
-                payment.getWorkerAmount(),
-                payment.getMessage(),
-                formatDateTime(payment.getTransactionDate()),
-                formatDateTime(payment.getCreatedAt()),
-                formatDateTime(payment.getTimeoutAt()),
-                payment.getFailureReason()
+            mappedStatus,
+            payment.getId().toString(),
+            payment.getJobRequest().getId().toString(),
+            payment.getAmount(),
+            payment.getPhoneNumber(),
+            payment.getCheckoutRequestId(),
+            payment.getMpesaReceiptNumber(),
+            payment.getPlatformFee(),
+            payment.getWorkerAmount(),
+            payment.getMessage(),
+            formatDateTime(payment.getTransactionDate()),
+            formatDateTime(payment.getCreatedAt()),
+            formatDateTime(payment.getTimeoutAt()),
+            payment.getFailureReason()
         );
     }
 
@@ -155,12 +164,12 @@ public class PaymentService {
 
         if (actor.getRole() == com.kazikonnect.backend.features.auth.UserRole.CLIENT
                 && !job.getClient().getId().equals(actor.getId())) {
-            throw new RuntimeException("Forbidden: you are not permitted to release this escrow.");
+            throw new RuntimeException("Forbidden: you are not permitted to approve this payment.");
         }
 
         EscrowPayment payment = escrowPaymentRepository.findTopByJobRequestIdAndStatusInOrderByCreatedAtDesc(jobId,
                         List.of(EscrowPaymentStatus.SUCCESS, EscrowPaymentStatus.ESCROWED))
-                .orElseThrow(() -> new RuntimeException("Escrow payment not found or not ready to release."));
+                .orElseThrow(() -> new RuntimeException("Payment record not found or not ready to release."));
 
         ensureStatusTransition(payment, EscrowPaymentStatus.RELEASED);
 
@@ -168,17 +177,17 @@ public class PaymentService {
         payment.setPlatformFee(fee);
         payment.setWorkerAmount(payment.getAmount() - fee);
         payment.setStatus(EscrowPaymentStatus.RELEASED);
-        payment.setMessage("Escrow released to worker. Platform fee: KES " + fee);
+        payment.setMessage("Payment released to worker. Platform fee: KES " + fee);
         payment.setUpdatedAt(LocalDateTime.now());
         escrowPaymentRepository.save(payment);
-        saveAuditLog(payment, "ESCROW_RELEASED", principal, "Escrow released to worker", null);
+        saveAuditLog(payment, "PAYMENT_RELEASED", principal, "Payment released to worker", null);
 
         if (job.getWorker() == null || job.getWorker().getUser() == null) {
             throw new RuntimeException("Worker account not found for this job.");
         }
 
         walletService.creditWallet(job.getWorker().getUser(), payment.getWorkerAmount(),
-                "Escrow release for job " + jobId);
+                "Payment release for job " + jobId);
     }
 
     @Transactional
@@ -194,19 +203,19 @@ public class PaymentService {
 
         EscrowPayment payment = escrowPaymentRepository.findTopByJobRequestIdAndStatusInOrderByCreatedAtDesc(jobId,
                         List.of(EscrowPaymentStatus.PENDING, EscrowPaymentStatus.SUCCESS, EscrowPaymentStatus.ESCROWED))
-                .orElseThrow(() -> new RuntimeException("Escrow payment not found or not eligible for refund."));
+                .orElseThrow(() -> new RuntimeException("Payment record not found or not eligible for refund."));
 
         if (payment.getStatus() != EscrowPaymentStatus.SUCCESS
                 && payment.getStatus() != EscrowPaymentStatus.PENDING
                 && payment.getStatus() != EscrowPaymentStatus.ESCROWED) {
-            throw new RuntimeException("Only pending, captured, or escrowed payments can be refunded.");
+            throw new RuntimeException("Only pending or captured payments can be refunded.");
         }
 
         payment.setStatus(EscrowPaymentStatus.REFUNDED);
-        payment.setMessage("Escrow refunded to payer.");
+        payment.setMessage("Payment refunded to payer.");
         payment.setUpdatedAt(LocalDateTime.now());
         escrowPaymentRepository.save(payment);
-        saveAuditLog(payment, "ESCROW_REFUNDED", principal, "Refund requested by actor", null);
+        saveAuditLog(payment, "PAYMENT_REFUNDED", principal, "Refund requested by actor", null);
     }
 
     @Transactional
@@ -219,20 +228,22 @@ public class PaymentService {
         EscrowPayment payment = paymentOpt.get();
         ensureStatusTransition(payment, EscrowPaymentStatus.REFUNDED);
         payment.setStatus(EscrowPaymentStatus.REFUNDED);
-        payment.setMessage(reason != null ? reason : "Escrow refunded by system.");
+        payment.setMessage(reason != null ? reason : "Payment refunded by system.");
         payment.setUpdatedAt(LocalDateTime.now());
         escrowPaymentRepository.save(payment);
-        saveAuditLog(payment, "ESCROW_REFUNDED", null, reason, null);
+        saveAuditLog(payment, "PAYMENT_REFUNDED", null, reason, null);
     }
 
     private String mapFailureReason(Integer resultCode, String resultDesc) {
         if (resultCode == null) {
+            if (resultDesc != null && resultDesc.toLowerCase().contains("pin")) return "WRONG_PIN";
             return resultDesc != null && !resultDesc.isBlank() ? resultDesc.toUpperCase() : "UNKNOWN_ERROR";
         }
         return switch (resultCode) {
             case 1032 -> "USER_CANCELLED";
             case 1031 -> "TIMEOUT";
             case 1 -> "INSUFFICIENT_FUNDS";
+            case 1034 -> "WRONG_PIN";
             case 1030 -> "REQUEST_CANCELLED";
             default -> "MPESA_ERROR_" + resultCode;
         };
@@ -240,12 +251,14 @@ public class PaymentService {
 
     private String mapFailureMessage(Integer resultCode, String resultDesc) {
         if (resultCode == null) {
+            if (resultDesc != null && resultDesc.toLowerCase().contains("pin")) return "Wrong PIN entered.";
             return resultDesc != null && !resultDesc.isBlank() ? resultDesc : "Payment failed.";
         }
         return switch (resultCode) {
             case 1032 -> "Payment cancelled by user.";
             case 1031 -> "No response from user.";
             case 1 -> "Insufficient funds.";
+            case 1034 -> "Wrong PIN entered.";
             case 1030 -> "STK request cancelled.";
             default -> resultDesc != null && !resultDesc.isBlank() ? resultDesc : "Payment failed.";
         };
@@ -269,13 +282,23 @@ public class PaymentService {
         }
 
         String callbackKey = buildCallbackIdempotencyKey(checkoutRequestId);
-        if (webhookProcessedLogRepository.existsById(callbackKey)) {
-            LOGGER.info("Duplicate MPESA callback ignored for CheckoutRequestID={}", checkoutRequestId);
-            return;
-        }
 
         if (!mpesaService.isAcceptedCallbackSource(remoteIp)) {
             LOGGER.warn("Rejected MPESA callback from unauthorized source {} for CheckoutRequestID={}", remoteIp, checkoutRequestId);
+            return;
+        }
+
+        // Insert-first idempotency: attempt to create a placeholder webhook log. If another
+        // process has already inserted a row with the same id, a DataIntegrityViolationException
+        // will be thrown and we should treat the callback as duplicate/already-processed.
+        try {
+            webhookProcessedLogRepository.save(WebhookProcessedLog.builder()
+                    .id(callbackKey)
+                    .checkoutRequestId(checkoutRequestId)
+                    .payload(null)
+                    .build());
+        } catch (DataIntegrityViolationException ex) {
+            LOGGER.info("Duplicate MPESA callback ignored (insert conflict) for CheckoutRequestID={}", checkoutRequestId);
             return;
         }
 
@@ -337,8 +360,8 @@ public class PaymentService {
 
         boolean success = resultCode != null && resultCode == 0;
         if (success) {
-            payment.setStatus(EscrowPaymentStatus.ESCROWED);
-            payment.setMessage("Payment captured and held in escrow.");
+            payment.setStatus(EscrowPaymentStatus.SUCCESS);
+            payment.setMessage("Payment captured successfully.");
             payment.setFailureReason(null);
         } else {
             payment.setStatus(EscrowPaymentStatus.FAILED);
@@ -348,7 +371,7 @@ public class PaymentService {
         payment.setUpdatedAt(LocalDateTime.now());
         escrowPaymentRepository.save(payment);
         saveAuditLog(payment, "MPESA_CALLBACK", null,
-                success ? "Payment held in escrow" : payment.getFailureReason(),
+                success ? "Payment captured successfully" : payment.getFailureReason(),
                 String.valueOf(callbackRequest));
 
         webhookProcessedLogRepository.save(WebhookProcessedLog.builder()
@@ -369,9 +392,9 @@ public class PaymentService {
                 EscrowPaymentStatus.PENDING, LocalDateTime.now());
         for (EscrowPayment payment : expiredPayments) {
             try {
-                refundEscrowBySystem(payment.getJobRequest().getId(), "Escrow auto-refunded after timeout.");
+                refundEscrowBySystem(payment.getJobRequest().getId(), "Payment auto-refunded after timeout.");
             } catch (Exception e) {
-                LOGGER.error("Failed to auto-refund expired escrow payment {}", payment.getId(), e);
+                LOGGER.error("Failed to auto-refund expired payment record {}", payment.getId(), e);
             }
         }
     }
@@ -400,7 +423,7 @@ public class PaymentService {
     private void ensureStatusTransition(EscrowPayment payment, EscrowPaymentStatus targetStatus) {
         if (!payment.getStatus().canTransitionTo(targetStatus)) {
             throw new IllegalStateException(
-                    String.format("Escrow payment may not transition from %s to %s", payment.getStatus(), targetStatus));
+                    String.format("Payment may not transition from %s to %s", payment.getStatus(), targetStatus));
         }
     }
 

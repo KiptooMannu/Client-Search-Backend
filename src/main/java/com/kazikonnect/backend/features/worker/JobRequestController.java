@@ -207,7 +207,7 @@ public class JobRequestController {
                     paymentService.releaseEscrow(jobId, principal);
                 } catch (RuntimeException e) {
                     return ResponseEntity.badRequest().body(
-                            "Cannot approve work until escrow payment is captured: " + e.getMessage());
+                            "Cannot approve work until payment is captured: " + e.getMessage());
                 }
 
                 // 1. Notification to Worker
@@ -251,7 +251,7 @@ public class JobRequestController {
 
             // LOGIC: If job is CANCELLED
             if (targetStatus == JobStatus.CANCELLED && oldStatus != JobStatus.CANCELLED) {
-                paymentService.refundEscrowBySystem(jobId, "Escrow refunded due to job cancellation.");
+                paymentService.refundEscrowBySystem(jobId, "Payment refunded due to job cancellation.");
 
                 User recipient = clientOwner ? job.getWorker().getUser() : job.getClient();
                 notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()

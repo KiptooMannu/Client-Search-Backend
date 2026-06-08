@@ -140,7 +140,12 @@ public class MpesaService {
             throw new IllegalStateException("MPESA_CALLBACK_URL must be configured.");
         }
         if (!callbackUrl.startsWith("https://")) {
-            throw new IllegalStateException("MPESA callback URL must use HTTPS.");
+            // Allow localhost HTTP callbacks when running in sandbox for local development
+            if (mpesaEnv != null && mpesaEnv.equalsIgnoreCase("sandbox") && callbackUrl.startsWith("http://localhost")) {
+                LOGGER.warn("Allowing non-HTTPS MPESA callback URL for local sandbox testing: {}", callbackUrl);
+            } else {
+                throw new IllegalStateException("MPESA callback URL must use HTTPS.");
+            }
         }
         LOGGER.info("MPESA service configured for env={}, shortcode={}, callbackUrl={}", mpesaEnv, shortcode, callbackUrl);
     }

@@ -19,6 +19,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
+import org.springframework.dao.DataIntegrityViolationException;
 
 @ExtendWith(MockitoExtension.class)
 class PaymentServiceCallbackTest {
@@ -86,7 +87,7 @@ class PaymentServiceCallbackTest {
 
     @SuppressWarnings("null")
     @Test
-    void handleMpesaCallbackShouldHoldSuccessfulPaymentInEscrow() {
+    void handleMpesaCallbackShouldCaptureSuccessfulPayment() {
         MpesaCallbackRequest.Item receipt = new MpesaCallbackRequest.Item("MpesaReceiptNumber", "ABC123");
         MpesaCallbackRequest.Item amount = new MpesaCallbackRequest.Item("Amount", 1200.0);
         MpesaCallbackRequest.Item phone = new MpesaCallbackRequest.Item("PhoneNumber", "254700000000");
@@ -104,8 +105,8 @@ class PaymentServiceCallbackTest {
 
         paymentService.handleMpesaCallback(callbackRequest, "127.0.0.1");
 
-        assertEquals(EscrowPaymentStatus.ESCROWED, payment.getStatus());
-        assertEquals("Payment captured and held in escrow.", payment.getMessage());
+        assertEquals(EscrowPaymentStatus.SUCCESS, payment.getStatus());
+        assertEquals("Payment captured successfully.", payment.getMessage());
         assertNull(payment.getFailureReason());
         assertEquals("ABC123", payment.getMpesaReceiptNumber());
         assertNotNull(payment.getTransactionDate());
@@ -113,4 +114,29 @@ class PaymentServiceCallbackTest {
         verify(paymentAuditLogRepository).save(any(PaymentAuditLog.class));
         verify(webhookProcessedLogRepository).save(any(WebhookProcessedLog.class));
     }
+
+        @SuppressWarnings("null")
+        @Test
+        void handleMpesaCallbackShouldIgnoreDuplicateCallback() {
+        MpesaCallbackRequest.Item receipt = new MpesaCallbackRequest.Item("MpesaReceiptNumber", "ABC123");
+        MpesaCallbackRequest.Item amount = new MpesaCallbackRequest.Item("Amount", 1200.0);
+        MpesaCallbackRequest.Item phone = new MpesaCallbackRequest.Item("PhoneNumber", "254700000000");
+        MpesaCallbackRequest.Item transactionDate = new MpesaCallbackRequest.Item("TransactionDate", "20250101120000");
+        MpesaCallbackRequest.CallbackMetadata metadata = new MpesaCallbackRequest.CallbackMetadata(List.of(receipt, amount, phone, transactionDate));
+        MpesaCallbackRequest.StkCallback stkCallback = new MpesaCallbackRequest.StkCallback(
+            "MERCHANT_REQ_ID", java.util.Objects.requireNonNull(payment.getCheckoutRequestId()), 0,
+            "The service request is processed successfully.", metadata);
+        MpesaCallbackRequest.Body body = new MpesaCallbackRequest.Body(stkCallback);
+        MpesaCallbackRequest callbackRequest = new MpesaCallbackRequest(body);
+
+        // Simulate duplicate insert conflict when trying to create initial webhook log
+        when(webhookProcessedLogRepository.save(any(WebhookProcessedLog.class)))
+            .thenThrow(new DataIntegrityViolationException("duplicate key"));
+
+        paymentService.handleMpesaCallback(callbackRequest, "127.0.0.1");
+
+        // Ensure we did not attempt to load or update the EscrowPayment record
+        verify(escrowPaymentRepository, never()).findByCheckoutRequestIdForUpdate(anyString());
+        verify(webhookProcessedLogRepository).save(any(WebhookProcessedLog.class));
+        }
 }

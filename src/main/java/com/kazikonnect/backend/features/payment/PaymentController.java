@@ -19,7 +19,7 @@ public class PaymentController {
     private final PaymentService paymentService;
 
     public record StkPushRequest(UUID jobId, String phoneNumber) {}
-    public record EscrowActionRequest(UUID jobId) {}
+    public record PaymentActionRequest(UUID jobId) {}
 
     @PostMapping("/mpesa/stkpush")
     @PreAuthorize("hasAuthority('Client') or hasAuthority('Admin')")
@@ -37,21 +37,19 @@ public class PaymentController {
     @GetMapping("/escrow/all")
     @PreAuthorize("hasAuthority('Admin')")
     public ResponseEntity<List<PaymentStatusResponse>> getAllEscrowPayments() {
-        return ResponseEntity.ok(paymentService.getAllEscrowPayments());
+        return ResponseEntity.status(410).build();
     }
 
     @PostMapping("/escrow/release")
     @PreAuthorize("hasAuthority('Client') or hasAuthority('Admin')")
-    public ResponseEntity<Map<String, String>> releaseEscrow(@RequestBody EscrowActionRequest request, Principal principal) {
-        paymentService.releaseEscrow(request.jobId(), principal);
-        return ResponseEntity.ok(Map.of("message", "Escrow successfully released."));
+    public ResponseEntity<Map<String, String>> releaseEscrow(@RequestBody PaymentActionRequest request, Principal principal) {
+        return ResponseEntity.status(410).body(Map.of("message", "Legacy escrow operations have been removed. Use M-Pesa payment flows and job approval instead."));
     }
 
     @PostMapping("/escrow/refund")
     @PreAuthorize("hasAuthority('Client') or hasAuthority('Admin')")
-    public ResponseEntity<Map<String, String>> refundEscrow(@RequestBody EscrowActionRequest request, Principal principal) {
-        paymentService.refundEscrow(request.jobId(), principal);
-        return ResponseEntity.ok(Map.of("message", "Escrow successfully refunded."));
+    public ResponseEntity<Map<String, String>> refundEscrow(@RequestBody PaymentActionRequest request, Principal principal) {
+        return ResponseEntity.status(410).body(Map.of("message", "Legacy escrow operations have been removed. Refunds are handled by support."));
     }
 
     @PostMapping("/mpesa/callback")
