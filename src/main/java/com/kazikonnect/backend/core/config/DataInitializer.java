@@ -46,6 +46,15 @@ public class DataInitializer implements CommandLineRunner {
     @Value("${app.data-seed.enabled:true}")
     private boolean shouldSeed;
 
+    @Value("${app.admin.email:admin@mail.com}")
+    private String adminEmail;
+
+    @Value("${app.admin.username:system_admin}")
+    private String adminUsername;
+
+    @Value("${app.admin.password:admin123}")
+    private String adminPassword;
+
     @Override
     public void run(String... args) throws Exception {
         // Drop the status check constraint to allow new statuses (CANCELLED,
@@ -59,10 +68,13 @@ public class DataInitializer implements CommandLineRunner {
 
         if (shouldSeed) {
             log.info("--- Starting Database Seeding ---");
+            
+            // Always ensure admin exists, independent of worker seed status
+            seedAdmin();
+            
             // Seed if no approved workers exist
             if (workerProfileRepository.countByStatus(WorkerStatus.APPROVED) == 0) {
                 seedSkills();
-                seedAdmin();
                 seedNamedWorkers();
                 seedNamedClients();
                 seedBulkWorkers();
@@ -261,15 +273,15 @@ public class DataInitializer implements CommandLineRunner {
 
     // ─── 2. Admin ────────────────────────────────────────────────────────────────
     private void seedAdmin() {
-        if (userRepository.existsByEmail("admin@kazikonnect.com") ||
-                userRepository.existsByUsername("system_admin"))
+        if (userRepository.existsByEmail(adminEmail) ||
+                userRepository.existsByUsername(adminUsername))
             return;
         User u = userRepository.save(User.builder()
-                .username("system_admin").email("admin@kazikonnect.com")
+                .username(adminUsername).email(adminEmail)
                 .firstName("System").secondName("Administrator")
                 .fullName("System Administrator").role(UserRole.ADMIN).build());
         authRepository.save(Auth.builder().user(u)
-                .passwordHash(passwordEncoder.encode("admin123")).isActive(true).build());
+                .passwordHash(passwordEncoder.encode(adminPassword)).isActive(true).build());
 
         // Seed Admin Notifications
         notificationRepository.save(Notification.builder()
@@ -286,7 +298,7 @@ public class DataInitializer implements CommandLineRunner {
                 .type("SUCCESS")
                 .build());
 
-        log.info("Seeded admin: admin@kazikonnect.com / admin123");
+        log.info("Seeded admin: {} / {}", adminEmail, adminPassword);
     }
 
     // ─── 3. Named Workers (rich data) ────────────────────────────────────────────
