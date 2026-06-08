@@ -273,9 +273,13 @@ public class DataInitializer implements CommandLineRunner {
 
     // ─── 2. Admin ────────────────────────────────────────────────────────────────
     private void seedAdmin() {
-        if (userRepository.existsByEmail(adminEmail) ||
-                userRepository.existsByUsername(adminUsername))
-            return;
+        java.util.List<User> existingAdmins = userRepository.findAllByRole(UserRole.ADMIN);
+        if (!existingAdmins.isEmpty()) {
+            log.info("Deleting {} existing admin user(s) before seeding default admin.", existingAdmins.size());
+            userRepository.deleteAll(existingAdmins);
+            userRepository.flush();
+        }
+
         User u = userRepository.save(User.builder()
                 .username(adminUsername).email(adminEmail)
                 .firstName("System").secondName("Administrator")
