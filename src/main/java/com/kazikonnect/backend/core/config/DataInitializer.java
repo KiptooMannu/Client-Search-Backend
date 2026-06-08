@@ -46,13 +46,13 @@ public class DataInitializer implements CommandLineRunner {
     @Value("${app.data-seed.enabled:true}")
     private boolean shouldSeed;
 
-    @Value("${app.admin.email:admin@mail.com}")
+    @Value("${app.admin.email}")
     private String adminEmail;
 
-    @Value("${app.admin.username:system_admin}")
+    @Value("${app.admin.username}")
     private String adminUsername;
 
-    @Value("${app.admin.password:admin123}")
+    @Value("${app.admin.password}")
     private String adminPassword;
 
     @Override
