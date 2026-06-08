@@ -273,17 +273,34 @@ public class DataInitializer implements CommandLineRunner {
 
     // ─── 2. Admin ────────────────────────────────────────────────────────────────
     private void seedAdmin() {
+        // Delete all existing admins and their related records first
         java.util.List<User> existingAdmins = userRepository.findAllByRole(UserRole.ADMIN);
+        
         if (!existingAdmins.isEmpty()) {
             log.info("Deleting {} existing admin user(s) before seeding default admin.", existingAdmins.size());
-            userRepository.deleteAll(existingAdmins);
+            
+            for (User admin : existingAdmins) {
+                try {
+                    // Delete the user - cascade will handle notifications, auth, and other relationships
+                    userRepository.delete(admin);
+                    log.info("Deleted admin user: {}", admin.getEmail());
+                } catch (Exception e) {
+                    log.error("Failed to delete admin user {}: {}", admin.getEmail(), e.getMessage());
+                    throw new RuntimeException("Failed to delete existing admin: " + e.getMessage(), e);
+                }
+            }
+            
+            // Flush changes to ensure deletion is committed before creating new admin
             userRepository.flush();
+            log.info("All admin users and related records deleted successfully.");
         }
 
+        // Create the new seeded admin user
         User u = userRepository.save(User.builder()
                 .username(adminUsername).email(adminEmail)
                 .firstName("System").secondName("Administrator")
                 .fullName("System Administrator").role(UserRole.ADMIN).build());
+        
         authRepository.save(Auth.builder().user(u)
                 .passwordHash(passwordEncoder.encode(adminPassword)).isActive(true).build());
 
