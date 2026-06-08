@@ -29,14 +29,14 @@ public class MarketplaceController {
 
     // READ: Advanced Marketplace Search
     @GetMapping("/search")
-    public List<WorkerProfileDTO> search(
+    public List<MarketplaceWorkerDTO> search(
             @RequestParam(required = false) String skill,
             @RequestParam(required = false) String location,
             @RequestParam(required = false) Integer minExp) {
         
         return workerProfileRepository.advancedSearch(WorkerStatus.APPROVED, skill, location, minExp)
                 .stream()
-                .map(WorkerProfileDTO::from)
+                .map(MarketplaceWorkerDTO::from)
                 .collect(Collectors.toList());
     }
 

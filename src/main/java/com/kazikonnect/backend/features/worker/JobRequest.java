@@ -46,7 +46,9 @@ public class JobRequest {
     @Column(name = "total_cost")
     private Double totalCost;
 
-
+    
+    @Column(name = "required_experience")
+    private Integer requiredExperience;
 
     @OneToOne(mappedBy = "jobRequest", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private Review review;

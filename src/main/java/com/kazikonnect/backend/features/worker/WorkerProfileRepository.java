@@ -23,6 +23,7 @@ public interface WorkerProfileRepository extends JpaRepository<WorkerProfile, UU
        @Query("SELECT DISTINCT w FROM WorkerProfile w " +
               "LEFT JOIN FETCH w.user " +
               "LEFT JOIN FETCH w.skills s " +
+              "LEFT JOIN FETCH w.reviews r " +
               "WHERE w.isVisible = true AND w.status = :status " +
               "AND (:skill IS NULL OR s.name LIKE %:skill%) " +
               "AND (:location IS NULL OR w.location LIKE %:location%) " +

@@ -13,7 +13,8 @@ public record JobRequestDTO(
     String status,
     LocalDateTime createdAt,
     Double totalCost,
-    Integer rating
+    Integer rating,
+    Integer requiredExperience
 ) {
     public static JobRequestDTO from(JobRequest j) {
         return new JobRequestDTO(
@@ -26,7 +27,8 @@ public record JobRequestDTO(
             j.getStatus().name(),
             j.getCreatedAt(),
             j.getTotalCost(),
-            j.getReview() != null ? j.getReview().getRating() : null
+            j.getReview() != null ? j.getReview().getRating() : null,
+            j.getRequiredExperience()
         );
     }
 }
