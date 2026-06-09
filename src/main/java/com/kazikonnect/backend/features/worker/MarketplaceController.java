@@ -4,7 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
+
 
 @RestController
 @RequestMapping("/api/marketplace")
@@ -27,17 +27,17 @@ public class MarketplaceController {
         return workerProfileRepository.findDistinctLocations();
     }
 
-    // READ: Advanced Marketplace Search
     @GetMapping("/search")
-    public List<MarketplaceWorkerDTO> search(
+    public org.springframework.data.domain.Page<MarketplaceWorkerDTO> search(
             @RequestParam(required = false) String skill,
             @RequestParam(required = false) String location,
-            @RequestParam(required = false) Integer minExp) {
-        
-        return workerProfileRepository.advancedSearch(WorkerStatus.APPROVED, skill, location, minExp)
-                .stream()
-                .map(MarketplaceWorkerDTO::from)
-                .collect(Collectors.toList());
+            @RequestParam(required = false) Integer minExp,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size);
+        return workerProfileRepository.advancedSearchPaged(WorkerStatus.APPROVED, skill, location, minExp, pageable)
+                .map(MarketplaceWorkerDTO::from);
     }
 
     // READ: Get a single worker's public profile (for client to view)

@@ -20,7 +20,8 @@ public record MarketplaceWorkerDTO(
     Set<String> skills,
     Set<String> preferredLocations,
     double averageRating,
-    int reviewCount
+    int reviewCount,
+    String status
 ) {
     public static MarketplaceWorkerDTO from(WorkerProfile profile) {
         return new MarketplaceWorkerDTO(
@@ -41,7 +42,8 @@ public record MarketplaceWorkerDTO(
             profile.getReviews() == null || profile.getReviews().isEmpty()
                 ? 0.0
                 : profile.getReviews().stream().mapToInt(Review::getRating).average().orElse(0.0),
-            profile.getReviews() == null ? 0 : profile.getReviews().size()
+            profile.getReviews() == null ? 0 : profile.getReviews().size(),
+            profile.getStatus() != null ? profile.getStatus().name() : null
         );
     }
 }
