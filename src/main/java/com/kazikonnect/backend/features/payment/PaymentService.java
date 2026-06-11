@@ -5,6 +5,7 @@ import com.kazikonnect.backend.features.auth.UserRepository;
 import com.kazikonnect.backend.features.wallet.WalletService;
 import com.kazikonnect.backend.features.worker.JobRequest;
 import com.kazikonnect.backend.features.worker.JobRequestRepository;
+import com.kazikonnect.backend.features.worker.JobStatus;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -112,7 +113,7 @@ public class PaymentService {
         // Map internal payment enum to simplified frontend statuses
         String mappedStatus = switch (payment.getStatus()) {
             case PENDING -> "PENDING";
-            case SUCCESS, ESCROWED, RELEASED -> "PAID";
+            case SUCCESS, ESCROWED, RELEASED, PARTIALLY_SETTLED -> "PAID";
             case REFUNDED, FAILED -> "FAILED";
         };
 
@@ -168,7 +169,7 @@ public class PaymentService {
         }
 
         EscrowPayment payment = escrowPaymentRepository.findTopByJobRequestIdAndStatusInOrderByCreatedAtDesc(jobId,
-                        List.of(EscrowPaymentStatus.SUCCESS, EscrowPaymentStatus.ESCROWED))
+                        List.of(EscrowPaymentStatus.SUCCESS, EscrowPaymentStatus.ESCROWED, EscrowPaymentStatus.PENDING))
                 .orElseThrow(() -> new RuntimeException("Payment record not found or not ready to release."));
 
         ensureStatusTransition(payment, EscrowPaymentStatus.RELEASED);
@@ -216,6 +217,12 @@ public class PaymentService {
         payment.setUpdatedAt(LocalDateTime.now());
         escrowPaymentRepository.save(payment);
         saveAuditLog(payment, "PAYMENT_REFUNDED", principal, "Refund requested by actor", null);
+
+        // Credit client's wallet with refund amount
+        if (job.getClient() != null && payment.getAmount() > 0) {
+            walletService.creditWallet(job.getClient(), payment.getAmount(),
+                    "Escrow refund for job " + jobId);
+        }
     }
 
     @Transactional
@@ -232,6 +239,61 @@ public class PaymentService {
         payment.setUpdatedAt(LocalDateTime.now());
         escrowPaymentRepository.save(payment);
         saveAuditLog(payment, "PAYMENT_REFUNDED", null, reason, null);
+
+        // Credit client's wallet
+        if (payment.getJobRequest() != null && payment.getJobRequest().getClient() != null && payment.getAmount() > 0) {
+            walletService.creditWallet(payment.getJobRequest().getClient(), payment.getAmount(),
+                    "Refund for job " + jobId + ": " + (reason != null ? reason : "Payment refunded by system."));
+        }
+    }
+
+    @Transactional
+    public void partialRefundEscrow(UUID jobId, double workerAmount, double clientRefund, String reason) {
+        JobRequest job = jobRequestRepository.findById(jobId)
+                .orElseThrow(() -> new RuntimeException("Job not found."));
+
+        // Accept SUCCESS, ESCROWED, or even PENDING (admin override for test/pending payments)
+        Optional<EscrowPayment> paymentOpt = escrowPaymentRepository
+                .findTopByJobRequestIdAndStatusInOrderByCreatedAtDesc(jobId,
+                        List.of(EscrowPaymentStatus.SUCCESS, EscrowPaymentStatus.ESCROWED,
+                                EscrowPaymentStatus.PENDING));
+
+        double fee = calculatePlatformFee(workerAmount);
+        double netWorkerAmount = workerAmount - fee;
+
+        if (paymentOpt.isPresent()) {
+            EscrowPayment payment = paymentOpt.get();
+            // Only enforce sum check when the payment amount is known
+            if (payment.getAmount() != null && payment.getAmount() > 0
+                    && Math.abs((workerAmount + clientRefund) - payment.getAmount()) > 1.0) {
+                throw new RuntimeException(
+                        "Worker amount + client refund must equal the total payment amount ("
+                                + payment.getAmount() + ")");
+            }
+            payment.setPlatformFee(fee);
+            payment.setWorkerAmount(netWorkerAmount);
+            payment.setStatus(EscrowPaymentStatus.PARTIALLY_SETTLED);
+            payment.setMessage("Partial settlement. Worker: KES " + workerAmount
+                    + " (fee: KES " + fee + "), Client refund: KES " + clientRefund);
+            payment.setUpdatedAt(LocalDateTime.now());
+            escrowPaymentRepository.save(payment);
+            saveAuditLog(payment, "PAYMENT_PARTIALLY_SETTLED", null, reason,
+                    "workerAmount=" + workerAmount + ", clientRefund=" + clientRefund);
+        } else {
+            LOGGER.warn("partialRefundEscrow: no capturable payment for job {}; crediting wallets directly.", jobId);
+        }
+
+        // Credit worker wallet (net of platform fee)
+        if (job.getWorker() != null && job.getWorker().getUser() != null && workerAmount > 0) {
+            walletService.creditWallet(job.getWorker().getUser(), netWorkerAmount,
+                    "Partial dispute payout for job " + jobId);
+        }
+
+        // Credit client wallet
+        if (job.getClient() != null && clientRefund > 0) {
+            walletService.creditWallet(job.getClient(), clientRefund,
+                    "Partial dispute refund for job " + jobId);
+        }
     }
 
     private String mapFailureReason(Integer resultCode, String resultDesc) {
@@ -363,6 +425,13 @@ public class PaymentService {
             payment.setStatus(EscrowPaymentStatus.SUCCESS);
             payment.setMessage("Payment captured successfully.");
             payment.setFailureReason(null);
+
+            // Transition job status to ASSIGNED upon successful payment capture
+            JobRequest job = payment.getJobRequest();
+            if (job != null && (job.getStatus() == JobStatus.ACCEPTED || job.getStatus() == JobStatus.PENDING)) {
+                job.setStatus(JobStatus.IN_PROGRESS);
+                jobRequestRepository.save(job);
+            }
         } else {
             payment.setStatus(EscrowPaymentStatus.FAILED);
             payment.setFailureReason(mapFailureReason(resultCode, resultDesc));

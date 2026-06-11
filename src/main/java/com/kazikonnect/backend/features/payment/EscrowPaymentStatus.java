@@ -6,16 +6,18 @@ public enum EscrowPaymentStatus {
     ESCROWED,
     RELEASED,
     REFUNDED,
-    FAILED;
+    FAILED,
+    PARTIALLY_SETTLED;
 
     public boolean canTransitionTo(EscrowPaymentStatus target) {
         return switch (this) {
-            case PENDING -> target == SUCCESS || target == ESCROWED || target == FAILED || target == REFUNDED;
-            case SUCCESS -> target == ESCROWED || target == RELEASED || target == REFUNDED || target == FAILED;
-            case ESCROWED -> target == RELEASED || target == REFUNDED || target == FAILED;
+            case PENDING -> target == SUCCESS || target == ESCROWED || target == FAILED || target == REFUNDED || target == PARTIALLY_SETTLED || target == RELEASED;
+            case SUCCESS -> target == ESCROWED || target == RELEASED || target == REFUNDED || target == FAILED || target == PARTIALLY_SETTLED;
+            case ESCROWED -> target == RELEASED || target == REFUNDED || target == FAILED || target == PARTIALLY_SETTLED;
             case RELEASED -> false;
             case REFUNDED -> false;
             case FAILED -> target == REFUNDED;
+            case PARTIALLY_SETTLED -> false;
         };
     }
 }
