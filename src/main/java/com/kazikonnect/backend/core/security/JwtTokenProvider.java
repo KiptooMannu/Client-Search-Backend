@@ -11,7 +11,7 @@ import java.util.UUID;
 @Component
 public class JwtTokenProvider {
 
-    @Value("${app.jwt.secret:base64-encoded-secret-key-at-least-256-bits-long-for-hmac-sha-algorithm}")
+    @Value("${app.jwt.secret}")
     private String jwtSecret;
 
     @Value("${app.jwt.expiration:900000}") // 15 minutes

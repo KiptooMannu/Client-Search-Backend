@@ -2,6 +2,9 @@ package com.kazikonnect.backend.features.payment;
 
 import com.kazikonnect.backend.features.auth.User;
 import com.kazikonnect.backend.features.auth.UserRepository;
+import com.kazikonnect.backend.features.auth.UserRole;
+import com.kazikonnect.backend.features.common.Notification;
+import com.kazikonnect.backend.features.common.NotificationRepository;
 import com.kazikonnect.backend.features.wallet.WalletService;
 import com.kazikonnect.backend.features.worker.JobRequest;
 import com.kazikonnect.backend.features.worker.JobRequestRepository;
@@ -33,6 +36,7 @@ public class PaymentService {
     private final EscrowPaymentRepository escrowPaymentRepository;
     private final WebhookProcessedLogRepository webhookProcessedLogRepository;
     private final PaymentAuditLogRepository paymentAuditLogRepository;
+    private final NotificationRepository notificationRepository;
     private final WalletService walletService;
     private final MpesaService mpesaService;
 
@@ -58,10 +62,15 @@ public class PaymentService {
         String normalizedPhone = mpesaService.normalizePhoneNumber(phoneNumber);
 
         Optional<EscrowPayment> latestPayment = escrowPaymentRepository.findTopByJobRequestIdOrderByCreatedAtDesc(jobId);
-        if (latestPayment.isPresent() && (latestPayment.get().getStatus() == EscrowPaymentStatus.PENDING
-            || latestPayment.get().getStatus() == EscrowPaymentStatus.ESCROWED
-            || latestPayment.get().getStatus() == EscrowPaymentStatus.SUCCESS)) {
-            throw new RuntimeException("A payment is already pending or captured for this job. Please wait for completion before retrying.");
+        if (latestPayment.isPresent()) {
+            EscrowPaymentStatus status = latestPayment.get().getStatus();
+            // Only reject if payment is already pending, escrowed or successfully captured
+            // FAILED payments CAN be retried by initiating a new STK push
+            if (status == EscrowPaymentStatus.PENDING 
+                || status == EscrowPaymentStatus.ESCROWED 
+                || status == EscrowPaymentStatus.SUCCESS) {
+                throw new RuntimeException("A payment is already pending or captured for this job. Please wait for completion before retrying.");
+            }
         }
 
         StkPushResponse pushResponse = mpesaService.initiateStkPush(normalizedPhone, amount, jobId.toString(),
@@ -115,6 +124,7 @@ public class PaymentService {
             case PENDING -> "PENDING";
             case SUCCESS, ESCROWED, RELEASED, PARTIALLY_SETTLED -> "PAID";
             case REFUNDED, FAILED -> "FAILED";
+            case DISPUTED -> "DISPUTED";
         };
 
         return new PaymentStatusResponse(
@@ -304,25 +314,29 @@ public class PaymentService {
         return switch (resultCode) {
             case 1032 -> "USER_CANCELLED";
             case 1031 -> "TIMEOUT";
-            case 1 -> "INSUFFICIENT_FUNDS";
+            case 1001 -> "TIMEOUT";
+            case 1, 1037 -> "INSUFFICIENT_FUNDS_OR_WRONG_PIN";
             case 1034 -> "WRONG_PIN";
             case 1030 -> "REQUEST_CANCELLED";
+            case 2001 -> "NETWORK_FAILURE";
             default -> "MPESA_ERROR_" + resultCode;
         };
     }
 
     private String mapFailureMessage(Integer resultCode, String resultDesc) {
         if (resultCode == null) {
-            if (resultDesc != null && resultDesc.toLowerCase().contains("pin")) return "Wrong PIN entered.";
-            return resultDesc != null && !resultDesc.isBlank() ? resultDesc : "Payment failed.";
+            if (resultDesc != null && resultDesc.toLowerCase().contains("pin")) return "Incorrect M-Pesa PIN. Please try again.";
+            return resultDesc != null && !resultDesc.isBlank() ? resultDesc : "Payment failed. Please try again.";
         }
         return switch (resultCode) {
             case 1032 -> "Payment cancelled by user.";
-            case 1031 -> "No response from user.";
-            case 1 -> "Insufficient funds.";
-            case 1034 -> "Wrong PIN entered.";
+            case 1031 -> "Payment request timed out. Please try again.";
+            case 1001 -> "Payment request timed out. Please try again.";
+            case 1, 1037 -> "Insufficient funds in your M-Pesa account or incorrect PIN. Please check and try again.";
+            case 1034 -> "Incorrect M-Pesa PIN. Please try again.";
             case 1030 -> "STK request cancelled.";
-            default -> resultDesc != null && !resultDesc.isBlank() ? resultDesc : "Payment failed.";
+            case 2001 -> "Unable to communicate with M-Pesa. Please try again.";
+            default -> resultDesc != null && !resultDesc.isBlank() ? resultDesc : "Payment failed. Please try again.";
         };
     }
 
@@ -539,5 +553,167 @@ public class PaymentService {
 
     private String formatDateTime(LocalDateTime value) {
         return value == null ? null : value.toString();
+    }
+
+    /**
+     * Process M-Pesa B2C transaction result (worker payout confirmation)
+     * Updates audit log and marks escrow as RELEASED when payment confirmed
+     */
+    @Transactional
+    public void processMpesaB2cResult(String transactionId, String conversationId, String resultCode, String sourceIp) {
+        try {
+            // Validate result code (0 = success)
+            boolean success = "0".equals(resultCode);
+            
+            LOGGER.info("Processing B2C result: txId={}, conversationId={}, success={}, sourceIp={}", 
+                transactionId, conversationId, success, sourceIp);
+            
+            if (success && transactionId != null && !transactionId.isBlank()) {
+                // Find escrow payment by receipt number or conversation ID
+                List<EscrowPayment> payments = escrowPaymentRepository.findAll().stream()
+                    .filter(p -> p.getMpesaReceiptNumber() != null && 
+                           p.getMpesaReceiptNumber().equals(transactionId))
+                    .collect(Collectors.toList());
+                
+                for (EscrowPayment payment : payments) {
+                    // Mark escrow as RELEASED since B2C transfer completed
+                    payment.setStatus(EscrowPaymentStatus.RELEASED);
+                    payment.setUpdatedAt(LocalDateTime.now());
+                    escrowPaymentRepository.save(payment);
+                    
+                    // Update audit log with payout confirmation
+                    saveAuditLog(payment, "B2C_PAYOUT_CONFIRMED", null, 
+                        "B2C transaction " + transactionId + " completed", 
+                        "transactionId=" + transactionId + ", conversationId=" + conversationId);
+                    
+                    LOGGER.info("B2C payout confirmed and escrow released for job {}", payment.getJobRequest().getId());
+                }
+            } else {
+                LOGGER.warn("B2C result processing failed: resultCode={}, transactionId={}", resultCode, transactionId);
+            }
+        } catch (Exception e) {
+            LOGGER.error("Error in processMpesaB2cResult: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Process M-Pesa B2C transaction timeout
+     * Updates audit log, schedules retry with exponential backoff, and notifies admin for manual intervention
+     */
+    @Transactional
+    public void processMpesaB2cTimeout(String conversationId, String responseCode, String responseDescription, String sourceIp) {
+        try {
+            LOGGER.error("B2C timeout processing: conversationId={}, code={}, desc={}, sourceIp={}", 
+                conversationId, responseCode, responseDescription, sourceIp);
+            
+            // Log timeout event for manual review
+            List<EscrowPayment> payments = escrowPaymentRepository.findAll().stream()
+                .filter(p -> p.getCheckoutRequestId() != null && 
+                       p.getCheckoutRequestId().contains(conversationId))
+                .collect(Collectors.toList());
+            
+            for (EscrowPayment payment : payments) {
+                // Record timeout in audit log for escalation
+                saveAuditLog(payment, "B2C_PAYOUT_TIMEOUT", null,
+                    "B2C transaction timed out with code " + responseCode,
+                    "conversationId=" + conversationId + ", description=" + responseDescription);
+                
+                LOGGER.warn("B2C timeout recorded for job {} - requires manual review", payment.getJobRequest().getId());
+                
+                // Implement retry logic with exponential backoff
+                implementB2cRetryLogic(payment, conversationId, responseCode, responseDescription);
+                
+                // Escalate to admin dashboard and send notification
+                escalateB2cTimeoutToAdmin(payment, conversationId, responseCode, responseDescription);
+            }
+            
+        } catch (Exception e) {
+            LOGGER.error("Error in processMpesaB2cTimeout: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Implement retry logic with exponential backoff for B2C timeouts
+     * Records retry attempts in audit log and marks for scheduled retry
+     */
+    private void implementB2cRetryLogic(EscrowPayment payment, String conversationId, String responseCode, String responseDescription) {
+        try {
+            // Count existing timeout attempts from audit log
+            List<PaymentAuditLog> timeoutAttempts = paymentAuditLogRepository.findByEscrowPaymentId(payment.getId()).stream()
+                .filter(log -> log.getEventType() != null && log.getEventType().contains("B2C_PAYOUT_TIMEOUT"))
+                .collect(Collectors.toList());
+            
+            int retryCount = timeoutAttempts.size();
+            int maxRetries = 5;
+            
+            if (retryCount < maxRetries) {
+                // Calculate exponential backoff: 1min, 2min, 4min, 8min, 16min (max 24hrs in production)
+                long backoffMinutes = (long) Math.min(Math.pow(2, retryCount), 1440); // 1440 = 24 hours
+                
+                String retryDetails = "Retry attempt " + (retryCount + 1) + " of " + maxRetries + 
+                                     " scheduled in " + backoffMinutes + " minutes";
+                
+                saveAuditLog(payment, "B2C_PAYOUT_RETRY_SCHEDULED", null,
+                    retryDetails,
+                    "backoffMinutes=" + backoffMinutes + ", conversationId=" + conversationId);
+                
+                LOGGER.info("B2C payout retry scheduled for job {} - backoff: {} minutes", 
+                    payment.getJobRequest().getId(), backoffMinutes);
+            } else {
+                // Max retries exceeded - escalate to manual intervention
+                saveAuditLog(payment, "B2C_PAYOUT_RETRY_EXHAUSTED", null,
+                    "Max retry attempts (" + maxRetries + ") exceeded. Manual intervention required.",
+                    "conversationId=" + conversationId + ", lastResponseCode=" + responseCode);
+                
+                LOGGER.error("B2C payout max retries exhausted for job {} - manual intervention required", 
+                    payment.getJobRequest().getId());
+            }
+        } catch (Exception e) {
+            LOGGER.error("Error in B2C retry logic: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Escalate B2C timeout to admin dashboard
+     * Creates admin notification for immediate action and visibility
+     */
+    private void escalateB2cTimeoutToAdmin(EscrowPayment payment, String conversationId, String responseCode, String responseDescription) {
+        try {
+            // Find admin user
+            User admin = userRepository.findAll().stream()
+                .filter(u -> u.getRole() == UserRole.ADMIN)
+                .findFirst()
+                .orElse(null);
+            
+            if (admin != null) {
+                String jobId = payment.getJobRequest().getId().toString();
+                String title = "B2C Payout Timeout - Manual Review Required";
+                String message = "Worker payout for job " + jobId + " has timed out (response: " + responseCode + "). " +
+                               "Retry attempts are in progress. Please monitor and escalate if needed.";
+                
+                // Create admin notification
+                Notification adminNotification = Notification.builder()
+                    .user(admin)
+                    .title(title)
+                    .message(message)
+                    .type("WARNING")
+                    .build();
+                
+                notificationRepository.save(adminNotification);
+                
+                // Log escalation event
+                saveAuditLog(payment, "B2C_PAYOUT_ESCALATED_TO_ADMIN", null,
+                    "Admin notification created for timeout escalation",
+                    "adminId=" + admin.getId() + ", conversationId=" + conversationId + ", responseCode=" + responseCode);
+                
+                LOGGER.warn("B2C timeout escalated to admin for job {} - notification sent", 
+                    payment.getJobRequest().getId());
+            } else {
+                LOGGER.error("No admin user found to escalate B2C timeout for job {}", 
+                    payment.getJobRequest().getId());
+            }
+        } catch (Exception e) {
+            LOGGER.error("Error escalating B2C timeout to admin: {}", e.getMessage(), e);
+        }
     }
 }

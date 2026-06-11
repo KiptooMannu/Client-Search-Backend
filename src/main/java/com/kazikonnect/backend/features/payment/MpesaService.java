@@ -147,6 +147,14 @@ public class MpesaService {
                 throw new IllegalStateException("MPESA callback URL must use HTTPS.");
             }
         }
+        // Validate callback IP whitelist in production
+        if (mpesaEnv != null && mpesaEnv.equalsIgnoreCase("production")) {
+            if (callbackAllowedIps == null || callbackAllowedIps.isBlank()) {
+                throw new IllegalStateException(
+                    "MPESA_CALLBACK_ALLOWED_IPS must be configured in production environment. " +
+                    "This is critical for webhook security to prevent spoofed payment notifications.");
+            }
+        }
         LOGGER.info("MPESA service configured for env={}, shortcode={}, callbackUrl={}", mpesaEnv, shortcode, callbackUrl);
     }
 

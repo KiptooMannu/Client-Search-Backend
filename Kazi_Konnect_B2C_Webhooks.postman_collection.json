@@ -1,0 +1,614 @@
+{
+  "info": {
+    "name": "Kazi Konnect B2C Webhooks",
+    "description": "M-Pesa B2C Webhook Testing Collection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Create Escrow Payment (Setup)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{JWT_TOKEN}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"jobId\": \"{{JOB_ID}}\",\n  \"phoneNumber\": \"+254712345678\"\n}"
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/api/payments/mpesa/stkpush",
+          "protocol": "http",
+          "host": [
+            "{{BASE_URL}}"
+          ],
+          "path": [
+            "api",
+            "payments",
+            "mpesa",
+            "stkpush"
+          ]
+        },
+        "description": "Initiates an STK push to create an escrow payment. This must be done first before testing webhooks."
+      },
+      "response": [
+        {
+          "name": "Success Response",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jobId\": \"550e8400-e29b-41d4-a716-446655440000\",\n  \"phoneNumber\": \"+254712345678\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8080/api/payments/mpesa/stkpush",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8080",
+              "path": [
+                "api",
+                "payments",
+                "mpesa",
+                "stkpush"
+              ]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"status\": \"PENDING\",\n  \"checkoutRequestId\": \"ws_CO_16062024090101234567\",\n  \"message\": \"STK push sent\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "2A. B2C Result - Success (resultCode: 0)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Forwarded-For",
+            "value": "196.201.214.200"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"Result\": {\n    \"ResultCode\": 0,\n    \"ResultDesc\": \"The service request has been processed successfully.\",\n    \"OriginatorConversationID\": \"19082-123456-1\",\n    \"ConversationID\": \"AG_20260611_12345678901234567890\",\n    \"TransactionID\": \"LIJ7791S60\",\n    \"TransactionAmount\": 2500.00,\n    \"TransactionReceipt\": \"LIJ7791S60\",\n    \"B2CUtilityAccountAvailable\": 4500.00,\n    \"B2CChargesPaidAccountAvailable\": 0,\n    \"B2CRecipientIsRegisteredCustomer\": true,\n    \"S2STransactionID\": \"0\"\n  }\n}"
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/api/payments/mpesa/result",
+          "protocol": "http",
+          "host": [
+            "{{BASE_URL}}"
+          ],
+          "path": [
+            "api",
+            "payments",
+            "mpesa",
+            "result"
+          ]
+        },
+        "description": "Webhook endpoint for successful B2C payout. M-Pesa calls this when payment is successfully transferred to worker."
+      },
+      "response": [
+        {
+          "name": "Success - Payment Released",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"Result\": {\n    \"ResultCode\": 0,\n    \"ResultDesc\": \"The service request has been processed successfully.\",\n    \"OriginatorConversationID\": \"19082-123456-1\",\n    \"ConversationID\": \"AG_20260611_12345678901234567890\",\n    \"TransactionID\": \"LIJ7791S60\",\n    \"TransactionAmount\": 2500.00,\n    \"TransactionReceipt\": \"LIJ7791S60\",\n    \"B2CUtilityAccountAvailable\": 4500.00,\n    \"B2CChargesPaidAccountAvailable\": 0,\n    \"B2CRecipientIsRegisteredCustomer\": true,\n    \"S2STransactionID\": \"0\"\n  }\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8080/api/payments/mpesa/result",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8080",
+              "path": [
+                "api",
+                "payments",
+                "mpesa",
+                "result"
+              ]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"status\": \"received\",\n  \"message\": \"Webhook acknowledged\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "2B. B2C Result - Failure (resultCode: 1 - Insufficient Funds)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"Result\": {\n    \"ResultCode\": 1,\n    \"ResultDesc\": \"Insufficient funds.\",\n    \"OriginatorConversationID\": \"19082-654321-1\",\n    \"ConversationID\": \"AG_20260611_12345678901234567890\",\n    \"TransactionID\": null,\n    \"TransactionAmount\": 2500.00\n  }\n}"
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/api/payments/mpesa/result",
+          "protocol": "http",
+          "host": [
+            "{{BASE_URL}}"
+          ],
+          "path": [
+            "api",
+            "payments",
+            "mpesa",
+            "result"
+          ]
+        },
+        "description": "B2C payout failed due to insufficient platform funds. Payment status remains PENDING - requires manual review."
+      },
+      "response": [
+        {
+          "name": "Success - Failure Logged",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"Result\": {\n    \"ResultCode\": 1,\n    \"ResultDesc\": \"Insufficient funds.\",\n    \"OriginatorConversationID\": \"19082-654321-1\",\n    \"ConversationID\": \"AG_20260611_12345678901234567890\",\n    \"TransactionID\": null,\n    \"TransactionAmount\": 2500.00\n  }\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8080/api/payments/mpesa/result",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8080",
+              "path": [
+                "api",
+                "payments",
+                "mpesa",
+                "result"
+              ]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"status\": \"received\",\n  \"message\": \"Webhook acknowledged\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "2C. B2C Result - Failure (resultCode: 1034 - Wrong PIN)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"Result\": {\n    \"ResultCode\": 1034,\n    \"ResultDesc\": \"WRONG PIN.\",\n    \"OriginatorConversationID\": \"19082-789012-1\",\n    \"ConversationID\": \"AG_20260611_12345678901234567890\",\n    \"TransactionID\": null,\n    \"TransactionAmount\": 2500.00\n  }\n}"
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/api/payments/mpesa/result",
+          "protocol": "http",
+          "host": [
+            "{{BASE_URL}}"
+          ],
+          "path": [
+            "api",
+            "payments",
+            "mpesa",
+            "result"
+          ]
+        },
+        "description": "B2C payout failed due to wrong PIN. Payment status remains PENDING - requires manual review."
+      },
+      "response": [
+        {
+          "name": "Success - PIN Error Logged",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"Result\": {\n    \"ResultCode\": 1034,\n    \"ResultDesc\": \"WRONG PIN.\",\n    \"OriginatorConversationID\": \"19082-789012-1\",\n    \"ConversationID\": \"AG_20260611_12345678901234567890\",\n    \"TransactionID\": null,\n    \"TransactionAmount\": 2500.00\n  }\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8080/api/payments/mpesa/result",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8080",
+              "path": [
+                "api",
+                "payments",
+                "mpesa",
+                "result"
+              ]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"status\": \"received\",\n  \"message\": \"Webhook acknowledged\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "3A. B2C Timeout - First Attempt",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"Result\": {\n    \"ResultCode\": 2001,\n    \"ResultDesc\": \"Request timeout.\",\n    \"OriginatorConversationID\": \"19082-999999-1\",\n    \"ConversationID\": \"AG_20260611_12345678901234567890\"\n  }\n}"
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/api/payments/mpesa/timeout",
+          "protocol": "http",
+          "host": [
+            "{{BASE_URL}}"
+          ],
+          "path": [
+            "api",
+            "payments",
+            "mpesa",
+            "timeout"
+          ]
+        },
+        "description": "B2C payout timed out (resultCode: 2001). Triggers exponential backoff retry logic. First retry scheduled in 1 minute."
+      },
+      "response": [
+        {
+          "name": "Success - Retry Scheduled",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"Result\": {\n    \"ResultCode\": 2001,\n    \"ResultDesc\": \"Request timeout.\",\n    \"OriginatorConversationID\": \"19082-999999-1\",\n    \"ConversationID\": \"AG_20260611_12345678901234567890\"\n  }\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8080/api/payments/mpesa/timeout",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8080",
+              "path": [
+                "api",
+                "payments",
+                "mpesa",
+                "timeout"
+              ]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"status\": \"received\",\n  \"message\": \"Timeout acknowledged\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "3B. B2C Timeout - Second Attempt (2 mins backoff)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"Result\": {\n    \"ResultCode\": 2001,\n    \"ResultDesc\": \"Request timeout.\",\n    \"OriginatorConversationID\": \"19082-999999-2\",\n    \"ConversationID\": \"AG_20260611_12345678901234567890\"\n  }\n}"
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/api/payments/mpesa/timeout",
+          "protocol": "http",
+          "host": [
+            "{{BASE_URL}}"
+          ],
+          "path": [
+            "api",
+            "payments",
+            "mpesa",
+            "timeout"
+          ]
+        },
+        "description": "Second timeout. Retry #2 scheduled in 2 minutes (exponential backoff)."
+      },
+      "response": [
+        {
+          "name": "Success - Retry 2 Scheduled",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"Result\": {\n    \"ResultCode\": 2001,\n    \"ResultDesc\": \"Request timeout.\",\n    \"OriginatorConversationID\": \"19082-999999-2\",\n    \"ConversationID\": \"AG_20260611_12345678901234567890\"\n  }\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8080/api/payments/mpesa/timeout",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8080",
+              "path": [
+                "api",
+                "payments",
+                "mpesa",
+                "timeout"
+              ]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"status\": \"received\",\n  \"message\": \"Timeout acknowledged\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "3C. B2C Timeout - After 5 Attempts (Escalation)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"Result\": {\n    \"ResultCode\": 2001,\n    \"ResultDesc\": \"Request timeout.\",\n    \"OriginatorConversationID\": \"19082-999999-6\",\n    \"ConversationID\": \"AG_20260611_12345678901234567890\"\n  }\n}"
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/api/payments/mpesa/timeout",
+          "protocol": "http",
+          "host": [
+            "{{BASE_URL}}"
+          ],
+          "path": [
+            "api",
+            "payments",
+            "mpesa",
+            "timeout"
+          ]
+        },
+        "description": "6th timeout. Max retries (5) exceeded. Admin notification created and escalated to admin dashboard."
+      },
+      "response": [
+        {
+          "name": "Success - Escalated to Admin",
+          "originalRequest": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"Result\": {\n    \"ResultCode\": 2001,\n    \"ResultDesc\": \"Request timeout.\",\n    \"OriginatorConversationID\": \"19082-999999-6\",\n    \"ConversationID\": \"AG_20260611_12345678901234567890\"\n  }\n}"
+            },
+            "url": {
+              "raw": "http://localhost:8080/api/payments/mpesa/timeout",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8080",
+              "path": [
+                "api",
+                "payments",
+                "mpesa",
+                "timeout"
+              ]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json\n"
+            }
+          ],
+          "body": "{\n  \"status\": \"received\",\n  \"message\": \"Timeout acknowledged\"\n}"
+        }
+      ]
+    },
+    {
+      "name": "4. Check Payment Status",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{BASE_URL}}/api/payments/status/{{JOB_ID}}",
+          "protocol": "http",
+          "host": [
+            "{{BASE_URL}}"
+          ],
+          "path": [
+            "api",
+            "payments",
+            "status",
+            "{{JOB_ID}}"
+          ]
+        },
+        "description": "Check the current payment status for a job. Use after sending webhooks to verify state transitions."
+      },
+      "response": [
+        {
+          "name": "Payment Released (after B2C success)",
+          "originalRequest": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8080/api/payments/status/550e8400-e29b-41d4-a716-446655440000",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8080",
+              "path": [
+                "api",
+                "payments",
+                "status",
+                "550e8400-e29b-41d4-a716-446655440000"
+              ]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"status\": \"PAID\",\n  \"paymentId\": \"a1b2c3d4-e5f6-4789-0123-456789abcdef\",\n  \"jobId\": \"550e8400-e29b-41d4-a716-446655440000\",\n  \"amount\": 2500.0,\n  \"phoneNumber\": \"+254712345678\",\n  \"checkoutRequestId\": \"ws_CO_16062024090101234567\",\n  \"mpesaReceiptNumber\": \"LIJ7791S60\",\n  \"platformFee\": 250.0,\n  \"workerAmount\": 2250.0,\n  \"message\": \"Payment released to worker. Platform fee: KES 250\",\n  \"transactionDate\": \"2026-06-11T14:30:45\",\n  \"createdAt\": \"2026-06-11T14:15:00\",\n  \"timeoutAt\": null,\n  \"failureReason\": null\n}"
+        },
+        {
+          "name": "Payment Pending (after timeout - no transition)",
+          "originalRequest": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8080/api/payments/status/550e8400-e29b-41d4-a716-446655440001",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8080",
+              "path": [
+                "api",
+                "payments",
+                "status",
+                "550e8400-e29b-41d4-a716-446655440001"
+              ]
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"status\": \"PENDING\",\n  \"paymentId\": \"b2c3d4e5-f6a7-4789-0123-456789abcdef\",\n  \"jobId\": \"550e8400-e29b-41d4-a716-446655440001\",\n  \"amount\": 2500.0,\n  \"phoneNumber\": \"+254712345678\",\n  \"checkoutRequestId\": \"ws_CO_16062024090101234568\",\n  \"mpesaReceiptNumber\": null,\n  \"platformFee\": null,\n  \"workerAmount\": null,\n  \"message\": \"STK push sent\",\n  \"transactionDate\": null,\n  \"createdAt\": \"2026-06-11T14:15:00\",\n  \"timeoutAt\": \"2026-06-11T14:30:00\",\n  \"failureReason\": null\n}"
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "BASE_URL",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "JWT_TOKEN",
+      "value": "your_jwt_token_here",
+      "type": "string"
+    },
+    {
+      "key": "JOB_ID",
+      "value": "550e8400-e29b-41d4-a716-446655440000",
+      "type": "string"
+    }
+  ]
+}

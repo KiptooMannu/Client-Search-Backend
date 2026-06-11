@@ -47,8 +47,9 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/payments/mpesa/callback").permitAll()
+                        .requestMatchers("/api/payments/mpesa/result").permitAll()
+                        .requestMatchers("/api/payments/mpesa/timeout").permitAll()
                         .requestMatchers("/health").permitAll()
-                        .requestMatchers("/dev/**").permitAll()
                         .requestMatchers("/ws/**").permitAll()
                         .requestMatchers("/api/marketplace/search").permitAll()
                         .requestMatchers("/api/marketplace/**").permitAll()

@@ -17,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.Locale;
 import java.util.Optional;
+import java.security.SecureRandom;
 
 
 @Service
@@ -25,6 +26,7 @@ import java.util.Optional;
 @SuppressWarnings("null")
 public class AuthService {
 
+    private final SecureRandom secureRandom = new SecureRandom();
     private final UserRepository userRepository;
     private final AuthRepository authRepository;
     private final RefreshTokenRepository refreshTokenRepository;
@@ -75,7 +77,7 @@ public class AuthService {
                 user = userRepository.save(user);
                 userRepository.flush();
 
-                String verificationToken = String.format("%06d", new java.util.Random().nextInt(900000) + 100000);
+                String verificationToken = String.format("%06d", secureRandom.nextInt(900000) + 100000);
                 auth.setPasswordHash(passwordEncoder.encode(password));
                 auth.setActive(true);
                 auth.setEmailVerified(false);
@@ -109,7 +111,7 @@ public class AuthService {
             user = userRepository.save(user);
             userRepository.flush();
 
-            String verificationToken = String.format("%06d", new java.util.Random().nextInt(900000) + 100000);
+            String verificationToken = String.format("%06d", secureRandom.nextInt(900000) + 100000);
 
             Auth auth = new Auth();
             auth.setUser(user);
@@ -264,7 +266,7 @@ public class AuthService {
         String normalizedEmail = normalizeEmail(email);
 
         userRepository.findByEmailIgnoreCase(normalizedEmail).ifPresent(user -> {
-            String resetToken = String.format("%06d", new java.util.Random().nextInt(900000) + 100000);
+            String resetToken = String.format("%06d", secureRandom.nextInt(900000) + 100000);
             LocalDateTime expiryDate = LocalDateTime.now().plusMinutes(15);
 
             passwordResetTokenRepository.deleteAllByUser(user);
@@ -356,7 +358,7 @@ public class AuthService {
             return "Email is already verified. Please log in.";
         }
 
-        String verificationToken = String.format("%06d", new java.util.Random().nextInt(900000) + 100000);
+        String verificationToken = String.format("%06d", secureRandom.nextInt(900000) + 100000);
         auth.setEmailVerificationToken(verificationToken);
         auth.setEmailVerificationTokenExpiry(LocalDateTime.now().plusHours(24));
         authRepository.save(auth);
