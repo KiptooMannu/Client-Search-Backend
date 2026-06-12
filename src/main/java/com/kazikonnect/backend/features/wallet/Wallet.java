@@ -28,17 +28,17 @@ public class Wallet {
 
     @Builder.Default
     @org.hibernate.annotations.JdbcTypeCode(java.sql.Types.NUMERIC)
-    @Column(nullable = false)
+    @Column(nullable = false, precision = 14, scale = 2)
     private Double balance = 0.0;
 
     @Builder.Default
     @org.hibernate.annotations.JdbcTypeCode(java.sql.Types.NUMERIC)
-    @Column(name = "total_earned", nullable = false)
+    @Column(name = "total_earned", nullable = false, precision = 14, scale = 2)
     private Double totalEarned = 0.0;
 
     @Builder.Default
     @org.hibernate.annotations.JdbcTypeCode(java.sql.Types.NUMERIC)
-    @Column(name = "total_withdrawn", nullable = false)
+    @Column(name = "total_withdrawn", nullable = false, precision = 14, scale = 2)
     private Double totalWithdrawn = 0.0;
 
     @Column(name = "created_at")

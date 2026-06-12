@@ -27,7 +27,7 @@ public class WithdrawalRequest {
     private User user;
 
     @org.hibernate.annotations.JdbcTypeCode(java.sql.Types.NUMERIC)
-    @Column(name = "amount", nullable = false)
+    @Column(name = "amount", nullable = false, precision = 14, scale = 2)
     private Double amount;
 
     @Column(name = "phone_number", nullable = false)
