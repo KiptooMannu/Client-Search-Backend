@@ -69,6 +69,28 @@ public class EscrowPayment {
     @Column(name = "timeout_at")
     private LocalDateTime timeoutAt;
 
+    // B2C Payout tracking fields
+    @Column(name = "b2c_conversation_id")
+    private String b2cConversationId;
+
+    @Column(name = "b2c_originator_conversation_id")
+    private String b2cOriginatorConversationId;
+
+    @Column(name = "b2c_transaction_id")
+    private String b2cTransactionId;
+
+    @Column(name = "b2c_initiated_at")
+    private LocalDateTime b2cInitiatedAt;
+
+    @Column(name = "b2c_completed_at")
+    private LocalDateTime b2cCompletedAt;
+
+    @Column(name = "b2c_retry_count")
+    private Integer b2cRetryCount;
+
+    @Column(name = "b2c_next_retry_at")
+    private LocalDateTime b2cNextRetryAt;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

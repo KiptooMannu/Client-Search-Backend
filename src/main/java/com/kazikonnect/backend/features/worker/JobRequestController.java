@@ -147,15 +147,18 @@ public class JobRequestController {
             if (targetStatus == JobStatus.ACCEPTED && workerOwner && oldStatus != JobStatus.ACCEPTED) {
                 notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
                         .user(job.getClient())
-                        .title("Job Accepted!")
-                        .message(job.getWorker().getFullName() + " has accepted your job request.")
+                        .title("Job Accepted — Payment Required!")
+                        .message(job.getWorker().getFullName()
+                                + " accepted your job request. Please go to My Bookings and make the M-Pesa payment to start the work.")
                         .type("SUCCESS")
                         .build());
 
                 messageRepository.save(com.kazikonnect.backend.features.common.Message.builder()
                         .sender(actor)
                         .receiver(job.getClient())
-                        .content("I've accepted your job request! I'll get started soon.")
+                        .content("Hi " + job.getClient().getFullName() + "! I've accepted your job request. " +
+                                 "Please make the payment via M-Pesa in your Bookings page so I can get started. " +
+                                 "Work will begin as soon as payment is confirmed in escrow.")
                         .isRead(false)
                         .build());
             }

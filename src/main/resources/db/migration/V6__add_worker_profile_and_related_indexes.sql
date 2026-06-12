@@ -1,91 +1,92 @@
 -- ===============================
--- Indexes for WorkerProfile and related tables
+-- Indexes for worker_profiles and related tables
+-- Fully defensive: checks table AND column existence before each index
 -- ===============================
 
--- 1. Most critical composite index for marketplace filtering
-CREATE INDEX IF NOT EXISTS idx_worker_marketplace 
-ON worker_profile(status, is_visible, location, experience_years);
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'worker_profiles') THEN
 
--- 2. Index for status and visibility (most common filter)
-CREATE INDEX IF NOT EXISTS idx_worker_status_visible 
-ON worker_profile(status, is_visible);
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'worker_profiles' AND column_name = 'status') THEN
+      CREATE INDEX IF NOT EXISTS idx_worker_status_visible
+          ON worker_profiles(status, is_visible);
+      CREATE INDEX IF NOT EXISTS idx_worker_active_marketplace
+          ON worker_profiles(id, location, experience_years, hourly_rate)
+          WHERE status = 'APPROVED' AND is_visible = true;
+    END IF;
 
--- 3. Index for location searches
-CREATE INDEX IF NOT EXISTS idx_worker_location 
-ON worker_profile(location) WHERE location IS NOT NULL;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'worker_profiles' AND column_name = 'location') THEN
+      CREATE INDEX IF NOT EXISTS idx_worker_location
+          ON worker_profiles(location) WHERE location IS NOT NULL;
+    END IF;
 
--- 4. Index for experience years filtering
-CREATE INDEX IF NOT EXISTS idx_worker_experience 
-ON worker_profile(experience_years);
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'worker_profiles' AND column_name = 'experience_years') THEN
+      CREATE INDEX IF NOT EXISTS idx_worker_experience
+          ON worker_profiles(experience_years);
+    END IF;
 
--- 5. Index for hourly rate (if sorting by price)
-CREATE INDEX IF NOT EXISTS idx_worker_hourly_rate 
-ON worker_profile(hourly_rate);
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'worker_profiles' AND column_name = 'hourly_rate') THEN
+      CREATE INDEX IF NOT EXISTS idx_worker_hourly_rate
+          ON worker_profiles(hourly_rate);
+    END IF;
 
--- 6. Index for category searches
-CREATE INDEX IF NOT EXISTS idx_worker_category 
-ON worker_profile(category);
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'worker_profiles' AND column_name = 'category') THEN
+      CREATE INDEX IF NOT EXISTS idx_worker_category
+          ON worker_profiles(category);
+    END IF;
 
--- 7. Index for online status
-CREATE INDEX IF NOT EXISTS idx_worker_online 
-ON worker_profile(is_online) WHERE is_online = true;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'worker_profiles' AND column_name = 'is_online') THEN
+      CREATE INDEX IF NOT EXISTS idx_worker_online
+          ON worker_profiles(is_online) WHERE is_online = true;
+    END IF;
 
--- 8. Composite index for full‑text search simulation
-CREATE INDEX IF NOT EXISTS idx_worker_search 
-ON worker_profile(status, is_visible, location, category, experience_years);
-
--- ===============================
--- Indexes for Skills (Many‑to‑Many)
--- ===============================
-
--- 9. Index for skill name lookups
-CREATE INDEX IF NOT EXISTS idx_skill_name 
-ON skill(name);
-
--- 10. Indexes for worker_skill join table
-CREATE INDEX IF NOT EXISTS idx_worker_skill_worker 
-ON worker_skill(worker_profile_id);
-
-CREATE INDEX IF NOT EXISTS idx_worker_skill_skill 
-ON worker_skill(skill_id);
-
--- 11. Composite index for skill filtering
-CREATE INDEX IF NOT EXISTS idx_worker_skill_composite 
-ON worker_skill(worker_profile_id, skill_id);
+  END IF;
+END $$;
 
 -- ===============================
--- Indexes for Reviews
+-- Indexes for skills table
 -- ===============================
 
--- 12. Index for review lookups by worker
-CREATE INDEX IF NOT EXISTS idx_review_worker 
-ON review(worker_profile_id);
-
--- 13. Index for rating calculations
-CREATE INDEX IF NOT EXISTS idx_review_rating 
-ON review(worker_profile_id, rating);
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'skills' AND column_name = 'name') THEN
+    CREATE INDEX IF NOT EXISTS idx_skill_name ON skills(name);
+  END IF;
+END $$;
 
 -- ===============================
--- Indexes for User table
+-- Indexes for worker_skills join table
+-- (column name discovered dynamically — skip if columns don't match expected names)
 -- ===============================
 
--- 14. Index for user lookups
-CREATE INDEX IF NOT EXISTS idx_user_username 
-ON users(username);
-
-CREATE INDEX IF NOT EXISTS idx_user_email 
-ON users(email);
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'worker_skills' AND column_name = 'worker_id') THEN
+    CREATE INDEX IF NOT EXISTS idx_worker_skill_worker    ON worker_skills(worker_id);
+    CREATE INDEX IF NOT EXISTS idx_worker_skill_composite ON worker_skills(worker_id, skill_id);
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'worker_skills' AND column_name = 'skill_id') THEN
+    CREATE INDEX IF NOT EXISTS idx_worker_skill_skill ON worker_skills(skill_id);
+  END IF;
+END $$;
 
 -- ===============================
--- Partial Indexes (Most Efficient)
+-- Indexes for reviews
 -- ===============================
 
--- 15. Only index approved and visible workers
-CREATE INDEX IF NOT EXISTS idx_worker_active_marketplace 
-ON worker_profile(id, location, experience_years, hourly_rate) 
-WHERE status = 'APPROVED' AND is_visible = true;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'reviews' AND column_name = 'worker_profile_id') THEN
+    CREATE INDEX IF NOT EXISTS idx_review_worker ON reviews(worker_profile_id);
+    CREATE INDEX IF NOT EXISTS idx_review_rating ON reviews(worker_profile_id, rating);
+  END IF;
+END $$;
 
--- 16. Index for workers with skills
-CREATE INDEX IF NOT EXISTS idx_worker_with_skills 
-ON worker_profile(id) 
-WHERE id IN (SELECT DISTINCT worker_profile_id FROM worker_skill);
+-- ===============================
+-- Indexes for users table
+-- ===============================
+
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'username') THEN
+    CREATE INDEX IF NOT EXISTS idx_user_username ON users(username);
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'email') THEN
+    CREATE INDEX IF NOT EXISTS idx_user_email ON users(email);
+  END IF;
+END $$;

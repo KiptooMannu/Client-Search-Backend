@@ -21,7 +21,24 @@ public interface EscrowPaymentRepository extends JpaRepository<EscrowPayment, UU
 
     List<EscrowPayment> findAllByStatusAndTimeoutAtBefore(EscrowPaymentStatus status, LocalDateTime timeoutAt);
 
+    // B2C specific queries
+    Optional<EscrowPayment> findByB2cConversationId(String b2cConversationId);
+
+    Optional<EscrowPayment> findByMpesaReceiptNumber(String mpesaReceiptNumber);
+
+    List<EscrowPayment> findByStatusAndB2cNextRetryAtBefore(EscrowPaymentStatus status, LocalDateTime nextRetryAt);
+
+    List<EscrowPayment> findByStatus(EscrowPaymentStatus status);
+
+    List<EscrowPayment> findByStatusAndTimeoutAtBefore(EscrowPaymentStatus status, LocalDateTime timeoutAt);
+
+    long countByStatusAndUpdatedAtBefore(EscrowPaymentStatus status, LocalDateTime updatedAt);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT e FROM EscrowPayment e WHERE e.checkoutRequestId = :checkoutRequestId")
     Optional<EscrowPayment> findByCheckoutRequestIdForUpdate(@Param("checkoutRequestId") String checkoutRequestId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT e FROM EscrowPayment e WHERE e.b2cConversationId = :conversationId")
+    Optional<EscrowPayment> findByB2cConversationIdForUpdate(@Param("conversationId") String conversationId);
 }

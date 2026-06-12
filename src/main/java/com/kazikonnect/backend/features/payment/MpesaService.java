@@ -49,6 +49,9 @@ public class MpesaService {
     @Value("${mpesa.callback-allowed-ips:}")
     private String callbackAllowedIps;
 
+    @Value("${mpesa.security-credential:}")
+    private String securityCredential;
+
     private final Logger LOGGER = LoggerFactory.getLogger(MpesaService.class);
     private final RestTemplate restTemplate;
 
@@ -225,6 +228,93 @@ public class MpesaService {
         return Objects.requireNonNull(
                 String.valueOf(body.get("access_token")),
                 "access_token value must not be null");
+    }
+
+    /**
+     * Initiate B2C (Business-to-Customer) payout
+     * Sends funds from business account to worker M-Pesa account
+     */
+    public B2cPayoutResponse initiateB2cPayout(String phoneNumber, double amount, String accountReference,
+            String transactionDesc) {
+        if (consumerKey == null || consumerKey.isBlank() || consumerSecret == null || consumerSecret.isBlank()) {
+            throw new RuntimeException("M-PESA credentials are not configured.");
+        }
+
+        String accessToken = fetchAccessToken();
+        String url = getBaseUrl() + "/mpesa/b2c/v1/paymentrequest";
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("InitiatorName", "KaziKonnect");  // Business initiating the transaction
+        payload.put("SecurityCredential", getSecurityCredential());  // Encrypted initiator password
+        payload.put("CommandID", "BusinessPayment");  // Can also be: SalaryPayment, PromotionPayment
+        payload.put("Amount", Math.round(amount));  // Amount in whole shillings
+        payload.put("PartyA", shortcode);  // Sender (business shortcode)
+        payload.put("PartyB", normalizePhoneNumber(phoneNumber));  // Receiver phone
+        payload.put("Remarks", "Worker payout");
+        payload.put("QueueTimeOutURL", callbackUrl.replace("/callback", "/b2c-timeout"));
+        payload.put("ResultURL", callbackUrl.replace("/callback", "/b2c-result"));
+        payload.put("AccountReference", accountReference);
+        payload.put("TransactionDesc", transactionDesc);
+
+        LOGGER.info("Sending MPESA B2C payout request for accountReference={} phoneNumber={} amount={}", 
+            accountReference, phoneNumber, amount);
+        LOGGER.debug("MPESA B2C payload: {}", payload);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(accessToken);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setAccept(List.of(MediaType.APPLICATION_JSON));
+
+        ResponseEntity<Map<String, Object>> response;
+        try {
+            response = restTemplate.exchange(
+                    url,
+                    HttpMethod.POST,
+                    new HttpEntity<>(payload, headers),
+                    new ParameterizedTypeReference<Map<String, Object>>() {
+                    });
+        } catch (HttpStatusCodeException e) {
+            String responseBody = e.getResponseBodyAsString();
+            throw new RuntimeException("M-PESA B2C request failed: " + e.getStatusCode() + " " + responseBody, e);
+        } catch (RestClientException e) {
+            throw new RuntimeException("Network error while sending M-PESA B2C request: " + e.getMessage(), e);
+        }
+
+        Map<String, Object> body = response.getBody();
+        if (body == null) {
+            throw new RuntimeException("Empty response received from M-PESA B2C request.");
+        }
+
+        String responseCode = String.valueOf(body.getOrDefault("ResponseCode", ""));
+        String conversationId = String.valueOf(body.getOrDefault("ConversationID", ""));
+        String originatorConversationId = String.valueOf(body.getOrDefault("OriginatorConversationID", ""));
+
+        if (!"0".equals(responseCode)) {
+            String errorMessage = String.valueOf(body.getOrDefault("ResponseDescription", "Unknown error"));
+            LOGGER.error("B2C payout request failed: {} - {}", responseCode, errorMessage);
+            throw new RuntimeException("B2C payout request failed: " + errorMessage);
+        }
+
+        LOGGER.info("MPESA B2C payout request accepted - ConversationID: {}, OriginatorConversationID: {}", 
+            conversationId, originatorConversationId);
+
+        return new B2cPayoutResponse(
+            conversationId,
+            originatorConversationId,
+            String.valueOf(body.getOrDefault("ResponseDescription", "B2C payment request accepted")),
+            responseCode
+        );
+    }
+
+    /**
+     * Get security credential (encrypted initiator password)
+     * In production, this should be properly encrypted. For now, placeholder.
+     */
+    private String getSecurityCredential() {
+        if (securityCredential == null || securityCredential.isBlank()) {
+            throw new IllegalStateException("MPESA_SECURITY_CREDENTIAL must be configured for B2C payouts.");
+        }
+        return securityCredential;
     }
 
     private String getBaseUrl() {
