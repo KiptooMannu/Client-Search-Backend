@@ -95,9 +95,11 @@ public class JobRequest {
     @Column(name = "admin_evidence_notes", columnDefinition = "TEXT")
     private String adminEvidenceNotes;
 
+    @org.hibernate.annotations.JdbcTypeCode(java.sql.Types.NUMERIC)
     @Column(name = "worker_partial_amount")
     private Double workerPartialAmount;
 
+    @org.hibernate.annotations.JdbcTypeCode(java.sql.Types.NUMERIC)
     @Column(name = "client_partial_amount")
     private Double clientPartialAmount;
 

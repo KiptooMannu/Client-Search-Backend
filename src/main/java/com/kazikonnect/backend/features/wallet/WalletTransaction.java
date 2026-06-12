@@ -33,9 +33,11 @@ public class WalletTransaction {
     @Column(name = "txn_type", nullable = false)
     private WalletTransactionType txnType;
 
+    @org.hibernate.annotations.JdbcTypeCode(java.sql.Types.NUMERIC)
     @Column(nullable = false)
     private Double amount;
 
+    @org.hibernate.annotations.JdbcTypeCode(java.sql.Types.NUMERIC)
     @Column(name = "balance_after", nullable = false)
     private Double balanceAfter;
 

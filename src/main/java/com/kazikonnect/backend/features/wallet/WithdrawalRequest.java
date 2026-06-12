@@ -26,6 +26,7 @@ public class WithdrawalRequest {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
+    @org.hibernate.annotations.JdbcTypeCode(java.sql.Types.NUMERIC)
     @Column(name = "amount", nullable = false)
     private Double amount;
 
