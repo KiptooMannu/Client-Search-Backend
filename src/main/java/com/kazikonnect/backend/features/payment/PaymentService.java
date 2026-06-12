@@ -86,7 +86,7 @@ public class PaymentService {
                     && existingPayment.getTimeoutAt() != null
                     && existingPayment.getTimeoutAt().isBefore(LocalDateTime.now());
 
-            if (status == EscrowPaymentStatus.FAILED || timedOut) {
+            if (status == EscrowPaymentStatus.FAILED || status == EscrowPaymentStatus.REFUNDED || timedOut) {
                 String prevReason = timedOut ? "STK_TIMEOUT_NO_CALLBACK" : existingPayment.getFailureReason();
                 LOGGER.info("Retrying payment for job {} - status={}, previous reason: {}", 
                     jobId, status, prevReason);

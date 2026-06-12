@@ -26,7 +26,7 @@ public enum EscrowPaymentStatus {
                     target == PARTIALLY_SETTLED || target == DISPUTED || target == B2C_INITIATED;
             case DISPUTED -> target == RELEASED || target == PARTIALLY_SETTLED || target == REFUNDED;
             case RELEASED -> false;
-            case REFUNDED -> false;
+            case REFUNDED -> target == PENDING;
             // FAILED can go back to PENDING when client retries payment
             case FAILED -> target == REFUNDED || target == PENDING;
             case PARTIALLY_SETTLED -> false;

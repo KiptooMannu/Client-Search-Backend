@@ -53,6 +53,54 @@ public class JobRequest {
     @OneToOne(mappedBy = "jobRequest", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private Review review;
 
+    @Column(name = "started_at")
+    private LocalDateTime startedAt;
+
+    @Column(name = "submitted_at")
+    private LocalDateTime submittedAt;
+
+    @Column(name = "approved_at")
+    private LocalDateTime approvedAt;
+
+    @Column(name = "disputed_at")
+    private LocalDateTime disputedAt;
+
+    @Column(name = "resolved_at")
+    private LocalDateTime resolvedAt;
+
+    @Column(name = "deadline")
+    private LocalDateTime deadline;
+
+    @Column(name = "dispute_reason", columnDefinition = "TEXT")
+    private String disputeReason;
+
+    @Column(name = "dispute_evidence", columnDefinition = "TEXT")
+    private String disputeEvidence;
+
+    @Column(name = "dispute_attachment_url")
+    private String disputeAttachmentUrl;
+
+    @Column(name = "dispute_response", columnDefinition = "TEXT")
+    private String disputeResponse;
+
+    @Column(name = "dispute_response_evidence", columnDefinition = "TEXT")
+    private String disputeResponseEvidence;
+
+    @Column(name = "dispute_response_attachment_url")
+    private String disputeResponseAttachmentUrl;
+
+    @Column(name = "admin_decision_reason", columnDefinition = "TEXT")
+    private String adminDecisionReason;
+
+    @Column(name = "admin_evidence_notes", columnDefinition = "TEXT")
+    private String adminEvidenceNotes;
+
+    @Column(name = "worker_partial_amount")
+    private Double workerPartialAmount;
+
+    @Column(name = "client_partial_amount")
+    private Double clientPartialAmount;
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();

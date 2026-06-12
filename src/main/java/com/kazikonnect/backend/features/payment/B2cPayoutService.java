@@ -6,6 +6,9 @@ import com.kazikonnect.backend.features.auth.UserRole;
 import com.kazikonnect.backend.features.common.Notification;
 import com.kazikonnect.backend.features.common.NotificationRepository;
 import com.kazikonnect.backend.features.worker.JobRequest;
+import com.kazikonnect.backend.features.wallet.WithdrawalRequest;
+import com.kazikonnect.backend.features.wallet.WithdrawalRequestRepository;
+import com.kazikonnect.backend.features.wallet.WalletService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,6 +34,8 @@ public class B2cPayoutService {
     private final UserRepository userRepository;
     private final NotificationRepository notificationRepository;
     private final PhoneValidationService phoneValidationService;
+    private final WithdrawalRequestRepository withdrawalRequestRepository;
+    private final WalletService walletService;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(B2cPayoutService.class);
 
@@ -148,6 +153,62 @@ public class B2cPayoutService {
     }
 
     /**
+     * Initiate B2C payout for a worker wallet withdrawal request.
+     * Validates worker phone and sends the requested amount via M-Pesa B2C.
+     */
+    @Transactional
+    public B2cPayoutResponse initiateWithdrawalPayout(WithdrawalRequest withdrawal) {
+        if (withdrawal == null || withdrawal.getAmount() == null || withdrawal.getAmount() <= 0) {
+            throw new IllegalArgumentException("Invalid withdrawal request or amount");
+        }
+        User worker = withdrawal.getUser();
+        if (worker == null) {
+            throw new IllegalArgumentException("Worker account not found for withdrawal payout");
+        }
+        String phoneNumber = withdrawal.getPhoneNumber();
+        if (phoneNumber == null || phoneNumber.isBlank()) {
+            throw new IllegalArgumentException("Withdrawal phone number not set. Cannot process payout.");
+        }
+        if (!phoneValidationService.isValidKenyanNumber(phoneNumber)) {
+            throw new IllegalArgumentException("Withdrawal phone number is not a valid Kenyan number");
+        }
+
+        try {
+            String normalizedPhone = mpesaService.normalizePhoneNumber(phoneNumber);
+            double amount = withdrawal.getAmount();
+
+            LOGGER.info("Initiating B2C payout for withdrawal {} to worker {} - Amount: KES {}", 
+                withdrawal.getId(), worker.getId(), amount);
+
+            B2cPayoutResponse response = mpesaService.initiateB2cPayout(
+                normalizedPhone,
+                amount,
+                withdrawal.getId().toString(),
+                "Worker withdrawal: " + withdrawal.getId()
+            );
+
+            withdrawal.setB2cConversationId(response.conversationId());
+            withdrawal.setB2cInitiatedAt(LocalDateTime.now());
+            withdrawal.setB2cRetryCount(0);
+            withdrawal.setB2cNextRetryAt(null);
+            withdrawal.setStatus("B2C_INITIATED");
+            withdrawal.setUpdatedAt(LocalDateTime.now());
+
+            withdrawalRequestRepository.save(withdrawal);
+
+            LOGGER.info("B2C withdrawal payout initiated successfully - Conversation ID: {}", response.conversationId());
+            return response;
+
+        } catch (Exception e) {
+            LOGGER.error("Failed to initiate B2C withdrawal payout for request {}: {}", withdrawal.getId(), e.getMessage(), e);
+            withdrawal.setStatus("FAILED");
+            withdrawal.setUpdatedAt(LocalDateTime.now());
+            withdrawalRequestRepository.save(withdrawal);
+            throw new RuntimeException("B2C withdrawal payout initiation failed: " + e.getMessage(), e);
+        }
+    }
+
+    /**
      * Process successful B2C result from M-Pesa webhook
      * Marks payment as successfully released
      */
@@ -159,7 +220,24 @@ public class B2cPayoutService {
         // Find payment by conversation ID
         Optional<EscrowPayment> paymentOpt = escrowPaymentRepository.findByB2cConversationId(conversationId);
         if (paymentOpt.isEmpty()) {
-            LOGGER.warn("No payment found for B2C conversation ID: {}", conversationId);
+            Optional<WithdrawalRequest> withdrawalOpt = withdrawalRequestRepository.findByB2cConversationId(conversationId);
+            if (withdrawalOpt.isPresent()) {
+                WithdrawalRequest withdrawal = withdrawalOpt.get();
+                if (!"B2C_INITIATED".equals(withdrawal.getStatus()) && !"B2C_PENDING".equals(withdrawal.getStatus())) {
+                    LOGGER.warn("B2C result received for withdrawal in unexpected status: {} for conversation {}", 
+                        withdrawal.getStatus(), conversationId);
+                    return;
+                }
+                withdrawal.setStatus("APPROVED");
+                withdrawal.setB2cTransactionId(transactionId);
+                withdrawal.setB2cCompletedAt(LocalDateTime.now());
+                withdrawal.setUpdatedAt(LocalDateTime.now());
+                withdrawalRequestRepository.save(withdrawal);
+
+                LOGGER.info("B2C withdrawal payout completed successfully - Conversation: {}, TxId: {}", conversationId, transactionId);
+                return;
+            }
+            LOGGER.warn("No payment or withdrawal found for B2C conversation ID: {}", conversationId);
             return;
         }
 
@@ -208,7 +286,32 @@ public class B2cPayoutService {
 
         Optional<EscrowPayment> paymentOpt = escrowPaymentRepository.findByB2cConversationId(conversationId);
         if (paymentOpt.isEmpty()) {
-            LOGGER.warn("No payment found for B2C conversation ID: {}", conversationId);
+            Optional<WithdrawalRequest> withdrawalOpt = withdrawalRequestRepository.findByB2cConversationId(conversationId);
+            if (withdrawalOpt.isPresent()) {
+                WithdrawalRequest withdrawal = withdrawalOpt.get();
+                int retryCount = withdrawal.getB2cRetryCount() != null ? withdrawal.getB2cRetryCount() : 0;
+                retryCount++;
+                long backoffMinutes = calculateBackoff(retryCount);
+                if (retryCount >= maxRetryAttempts) {
+                    withdrawal.setStatus("FAILED");
+                    withdrawal.setUpdatedAt(LocalDateTime.now());
+                    withdrawalRequestRepository.save(withdrawal);
+
+                    // Refund worker's wallet balance
+                    walletService.creditWallet(withdrawal.getUser(), withdrawal.getAmount(), 
+                        "Refund for failed withdrawal " + withdrawal.getId());
+                    LOGGER.error("Max retries exceeded for B2C withdrawal payout: {}", conversationId);
+                } else {
+                    withdrawal.setB2cRetryCount(retryCount);
+                    withdrawal.setB2cNextRetryAt(LocalDateTime.now().plusMinutes(backoffMinutes));
+                    withdrawal.setStatus("B2C_RETRY_PENDING");
+                    withdrawal.setUpdatedAt(LocalDateTime.now());
+                    withdrawalRequestRepository.save(withdrawal);
+                    LOGGER.info("B2C withdrawal retry scheduled in {} minutes", backoffMinutes);
+                }
+                return;
+            }
+            LOGGER.warn("No payment or withdrawal found for B2C timeout conversation ID: {}", conversationId);
             return;
         }
 
@@ -310,6 +413,48 @@ public class B2cPayoutService {
             saveAuditLog(payment, "B2C_PAYOUT_RETRY_FAILED",
                 "B2C payout retry failed: " + e.getMessage(),
                 "exception=" + e.getClass().getSimpleName());
+        }
+    }
+
+    /**
+     * Retry B2C payout for a withdrawal request that timed out
+     */
+    @Transactional
+    public void retryWithdrawalPayout(WithdrawalRequest withdrawal) {
+        if (withdrawal == null || withdrawal.getB2cNextRetryAt() == null) {
+            return;
+        }
+
+        if (LocalDateTime.now().isBefore(withdrawal.getB2cNextRetryAt())) {
+            return; // Not ready for retry yet
+        }
+
+        try {
+            LOGGER.info("Retrying B2C payout for withdrawal {} - Attempt {}", 
+                withdrawal.getId(), withdrawal.getB2cRetryCount());
+
+            String normalizedPhone = mpesaService.normalizePhoneNumber(withdrawal.getPhoneNumber());
+
+            // Attempt B2C payout again
+            B2cPayoutResponse response = mpesaService.initiateB2cPayout(
+                normalizedPhone,
+                withdrawal.getAmount(),
+                withdrawal.getId().toString(),
+                "Worker withdrawal retry: " + withdrawal.getId()
+            );
+
+            withdrawal.setB2cConversationId(response.conversationId());
+            withdrawal.setStatus("B2C_INITIATED");
+            withdrawal.setB2cNextRetryAt(null);
+            withdrawal.setUpdatedAt(LocalDateTime.now());
+
+            withdrawalRequestRepository.save(withdrawal);
+
+            LOGGER.info("B2C withdrawal payout retry executed successfully - New Conversation ID: {}", response.conversationId());
+
+        } catch (Exception e) {
+            LOGGER.error("B2C withdrawal payout retry failed for withdrawal {}: {}", 
+                withdrawal.getId(), e.getMessage(), e);
         }
     }
 

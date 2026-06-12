@@ -251,8 +251,8 @@ public class MpesaService {
         payload.put("PartyA", shortcode);  // Sender (business shortcode)
         payload.put("PartyB", normalizePhoneNumber(phoneNumber));  // Receiver phone
         payload.put("Remarks", "Worker payout");
-        payload.put("QueueTimeOutURL", callbackUrl.replace("/callback", "/b2c-timeout"));
-        payload.put("ResultURL", callbackUrl.replace("/callback", "/b2c-result"));
+        payload.put("QueueTimeOutURL", callbackUrl.replace("/callback", "/timeout"));
+        payload.put("ResultURL", callbackUrl.replace("/callback", "/result"));
         payload.put("AccountReference", accountReference);
         payload.put("TransactionDesc", transactionDesc);
 

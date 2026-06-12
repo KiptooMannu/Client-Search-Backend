@@ -270,6 +270,149 @@ public class JobRequestController {
         }).orElse(ResponseEntity.notFound().build());
     }
 
+    // POST: Client opens a dispute
+    @PostMapping("/{jobId}/dispute")
+    @PreAuthorize("hasAuthority('Client')")
+    @Transactional
+    public ResponseEntity<?> openDispute(
+            @PathVariable UUID jobId,
+            @RequestParam String reason,
+            @RequestParam(required = false) String evidence,
+            @RequestParam(required = false) String attachmentUrl,
+            Principal principal) {
+        return jobRequestRepository.findById(jobId).map(job -> {
+            User actor = userRepository.findByUsername(principal.getName()).orElse(null);
+            if (actor == null) return ResponseEntity.status(401).body("Unauthorized.");
+
+            if (!job.getClient().getId().equals(actor.getId())) {
+                return ResponseEntity.status(403).body("Forbidden: Only the client can open a dispute.");
+            }
+
+            if (job.getStatus() == JobStatus.DISPUTED) {
+                return ResponseEntity.badRequest().body("Dispute already open for this job.");
+            }
+
+            job.setStatus(JobStatus.DISPUTED);
+            job.setDisputedAt(java.time.LocalDateTime.now());
+            job.setDisputeReason(reason);
+            job.setDisputeEvidence(evidence);
+            job.setDisputeAttachmentUrl(attachmentUrl);
+
+            JobRequest saved = jobRequestRepository.save(job);
+
+            notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                    .user(job.getWorker().getUser())
+                    .title("Dispute Opened")
+                    .message(job.getClient().getFullName() + " has opened a dispute regarding this job: " + reason)
+                    .type("DANGER")
+                    .build());
+
+            return ResponseEntity.ok(JobRequestDTO.from(saved));
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    // POST: Worker responds to a dispute
+    @PostMapping("/{jobId}/dispute/respond")
+    @PreAuthorize("hasAuthority('Worker')")
+    @Transactional
+    public ResponseEntity<?> respondToDispute(
+            @PathVariable UUID jobId,
+            @RequestParam String response,
+            @RequestParam(required = false) String evidence,
+            @RequestParam(required = false) String attachmentUrl,
+            Principal principal) {
+        return jobRequestRepository.findById(jobId).map(job -> {
+            User actor = userRepository.findByUsername(principal.getName()).orElse(null);
+            if (actor == null) return ResponseEntity.status(401).body("Unauthorized.");
+
+            if (job.getWorker() == null || job.getWorker().getUser() == null ||
+                    !job.getWorker().getUser().getId().equals(actor.getId())) {
+                return ResponseEntity.status(403).body("Forbidden: Only the assigned worker can respond.");
+            }
+
+            if (job.getStatus() != JobStatus.DISPUTED) {
+                return ResponseEntity.badRequest().body("No open dispute on this job to respond to.");
+            }
+
+            job.setDisputeResponse(response);
+            job.setDisputeResponseEvidence(evidence);
+            job.setDisputeResponseAttachmentUrl(attachmentUrl);
+
+            JobRequest saved = jobRequestRepository.save(job);
+
+            notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                    .user(job.getClient())
+                    .title("Dispute Response Received")
+                    .message(job.getWorker().getFullName() + " has responded to your dispute.")
+                    .type("INFO")
+                    .build());
+
+            return ResponseEntity.ok(JobRequestDTO.from(saved));
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    // POST: Admin resolves dispute
+    @PostMapping("/{jobId}/admin/resolve")
+    @PreAuthorize("hasAuthority('Admin')")
+    @Transactional
+    public ResponseEntity<?> resolveDispute(
+            @PathVariable UUID jobId,
+            @RequestParam String decisionReason,
+            @RequestParam(required = false) String evidenceNotes,
+            @RequestParam double workerPartialAmount,
+            @RequestParam double clientPartialAmount,
+            Principal principal) {
+        return jobRequestRepository.findById(jobId).map(job -> {
+            User actor = userRepository.findByUsername(principal.getName()).orElse(null);
+            if (actor == null) return ResponseEntity.status(401).body("Unauthorized.");
+
+            if (job.getStatus() != JobStatus.DISPUTED) {
+                return ResponseEntity.badRequest().body("Job is not in DISPUTED status.");
+            }
+
+            if (workerPartialAmount < 0 || clientPartialAmount < 0) {
+                return ResponseEntity.badRequest().body("Amounts cannot be negative.");
+            }
+
+            try {
+                paymentService.partialRefundEscrow(jobId, workerPartialAmount, clientPartialAmount, decisionReason);
+            } catch (Exception e) {
+                return ResponseEntity.badRequest().body("Failed to process dispute refund: " + e.getMessage());
+            }
+
+            job.setAdminDecisionReason(decisionReason);
+            job.setAdminEvidenceNotes(evidenceNotes);
+            job.setWorkerPartialAmount(workerPartialAmount);
+            job.setClientPartialAmount(clientPartialAmount);
+            job.setResolvedAt(java.time.LocalDateTime.now());
+            job.setStatus(JobStatus.COMPLETED);
+
+            JobRequest saved = jobRequestRepository.save(job);
+
+            // Notify client
+            if (job.getClient() != null) {
+                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                        .user(job.getClient())
+                        .title("Dispute Resolved")
+                        .message("Admin has resolved the dispute. Client payout: KES " + clientPartialAmount + ". Reason: " + decisionReason)
+                        .type("INFO")
+                        .build());
+            }
+
+            // Notify worker
+            if (job.getWorker() != null && job.getWorker().getUser() != null) {
+                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                        .user(job.getWorker().getUser())
+                        .title("Dispute Resolved")
+                        .message("Admin has resolved the dispute. Worker payout: KES " + workerPartialAmount + ". Reason: " + decisionReason)
+                        .type("INFO")
+                        .build());
+            }
+
+            return ResponseEntity.ok(JobRequestDTO.from(saved));
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
     // DELETE: Delete a job request
     @DeleteMapping("/{jobId}")
     @PreAuthorize("hasAuthority('Worker') or hasAuthority('Admin')")

@@ -1,5 +1,7 @@
 package com.kazikonnect.backend.features.payment;
 
+import com.kazikonnect.backend.features.wallet.WithdrawalRequest;
+import com.kazikonnect.backend.features.wallet.WithdrawalRequestRepository;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,6 +22,7 @@ public class PaymentRetryScheduler {
 
     private final EscrowPaymentRepository escrowPaymentRepository;
     private final B2cPayoutService b2cPayoutService;
+    private final WithdrawalRequestRepository withdrawalRequestRepository;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(PaymentRetryScheduler.class);
 
@@ -51,6 +54,27 @@ public class PaymentRetryScheduler {
                 } catch (Exception e) {
                     LOGGER.error("Failed to retry B2C payout for job {}: {}", 
                         payment.getJobRequest().getId(), e.getMessage(), e);
+                }
+            }
+
+            // Find all withdrawal requests ready for retry
+            List<WithdrawalRequest> withdrawalsReadyForRetry = withdrawalRequestRepository.findByStatusAndB2cNextRetryAtBefore(
+                "B2C_RETRY_PENDING", now);
+
+            if (!withdrawalsReadyForRetry.isEmpty()) {
+                LOGGER.info("Found {} B2C withdrawals ready for retry", withdrawalsReadyForRetry.size());
+            }
+
+            for (WithdrawalRequest withdrawal : withdrawalsReadyForRetry) {
+                try {
+                    LOGGER.info("Retrying B2C withdrawal payout {} (attempt {})", 
+                        withdrawal.getId(), withdrawal.getB2cRetryCount());
+
+                    b2cPayoutService.retryWithdrawalPayout(withdrawal);
+
+                } catch (Exception e) {
+                    LOGGER.error("Failed to retry B2C payout for withdrawal {}: {}", 
+                        withdrawal.getId(), e.getMessage(), e);
                 }
             }
 
