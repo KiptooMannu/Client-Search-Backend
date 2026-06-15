@@ -140,6 +140,44 @@ public class JobRequestController {
             if (targetStatus == JobStatus.REVISION) {
                 targetStatus = JobStatus.REVISION_REQUESTED;
             }
+
+            // Client/admin approval releases escrow to the worker wallet.
+            if (targetStatus == JobStatus.APPROVED) {
+                if (!clientOwner && !admin) {
+                    return ResponseEntity.status(403).body("Only the client or an admin can approve delivered work.");
+                }
+
+                try {
+                    paymentService.releaseEscrow(jobId, principal);
+                } catch (RuntimeException e) {
+                    return ResponseEntity.badRequest().body(
+                            "Cannot approve work until payment is captured: " + e.getMessage());
+                }
+
+                JobRequest updatedJob = jobRequestRepository.findById(jobId).orElse(job);
+
+                if (oldStatus != JobStatus.APPROVED) {
+                    // 1. Notification to Worker
+                    notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                            .user(updatedJob.getWorker().getUser())
+                            .title("Work Approved & Payment Released!")
+                            .message(updatedJob.getClient().getFullName()
+                                    + " has approved your work. Payment is now available in your wallet.")
+                            .type("SUCCESS")
+                            .build());
+
+                    // 2. Automatic Message
+                    messageRepository.save(com.kazikonnect.backend.features.common.Message.builder()
+                            .sender(actor)
+                            .receiver(updatedJob.getWorker().getUser())
+                            .content("Hi " + updatedJob.getWorker().getFullName() + ", I've approved the work. Great job!")
+                            .isRead(false)
+                            .build());
+                }
+
+                return ResponseEntity.ok(JobRequestDTO.from(updatedJob));
+            }
+
             job.setStatus(targetStatus);
             JobRequest saved = jobRequestRepository.save(job);
 
@@ -200,33 +238,6 @@ public class JobRequestController {
                         .receiver(job.getClient())
                         .content("Hi " + job.getClient().getFullName()
                                 + ", I have delivered the work. Please review it at your convenience!")
-                        .isRead(false)
-                        .build());
-            }
-
-            // LOGIC: If client marks as APPROVED (Payment Release)
-            if (targetStatus == JobStatus.APPROVED && (clientOwner || admin) && oldStatus != JobStatus.APPROVED) {
-                try {
-                    paymentService.releaseEscrow(jobId, principal);
-                } catch (RuntimeException e) {
-                    return ResponseEntity.badRequest().body(
-                            "Cannot approve work until payment is captured: " + e.getMessage());
-                }
-
-                // 1. Notification to Worker
-                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
-                        .user(job.getWorker().getUser())
-                        .title("Work Approved & Payment Released!")
-                        .message(job.getClient().getFullName()
-                                + " has approved your work. Payment is now available in your wallet.")
-                        .type("SUCCESS")
-                        .build());
-
-                // 2. Automatic Message
-                messageRepository.save(com.kazikonnect.backend.features.common.Message.builder()
-                        .sender(actor)
-                        .receiver(job.getWorker().getUser())
-                        .content("Hi " + job.getWorker().getFullName() + ", I've approved the work. Great job!")
                         .isRead(false)
                         .build());
             }

@@ -84,6 +84,15 @@ public class GlobalExceptionHandler {
         );
     }
 
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<?> handleIllegalState(IllegalStateException ex) {
+        return buildErrorResponse(
+            HttpStatus.CONFLICT,
+            "Invalid State",
+            ex.getMessage()
+        );
+    }
+
     /**
      * Handles EntityNotFoundException.
      */

@@ -256,8 +256,14 @@ public class PaymentService {
         }
 
         EscrowPayment payment = escrowPaymentRepository.findTopByJobRequestIdAndStatusInOrderByCreatedAtDesc(jobId,
-                        List.of(EscrowPaymentStatus.SUCCESS, EscrowPaymentStatus.ESCROWED))
+                        List.of(EscrowPaymentStatus.SUCCESS, EscrowPaymentStatus.ESCROWED, EscrowPaymentStatus.RELEASED))
                 .orElseThrow(() -> new RuntimeException("Payment record not found or not ready to release. Payment must be confirmed first."));
+
+        if (payment.getStatus() == EscrowPaymentStatus.RELEASED) {
+            job.setStatus(JobStatus.APPROVED);
+            jobRequestRepository.save(job);
+            return;
+        }
 
         ensureStatusTransition(payment, EscrowPaymentStatus.RELEASED);
 
@@ -276,8 +282,8 @@ public class PaymentService {
             throw new RuntimeException("Worker account not found for this job.");
         }
 
-        // Update job status to IN_PROGRESS when payment is released
-        job.setStatus(JobStatus.IN_PROGRESS);
+        // Keep the job approved after the client releases escrow.
+        job.setStatus(JobStatus.APPROVED);
         jobRequestRepository.save(job);
 
         // This credit happens atomically within the same transaction
@@ -569,7 +575,9 @@ public class PaymentService {
         }
 
         // Update payment with M-Pesa data
-        if (phoneNumber != null) payment.setPhoneNumber(phoneNumber);
+        if (phoneNumber != null && !phoneNumber.isBlank()) {
+            payment.setPhoneNumber(mpesaService.normalizePhoneNumber(phoneNumber));
+        }
         if (receiptNumber != null) payment.setMpesaReceiptNumber(receiptNumber);
         if (amount != null && amount > 0) payment.setAmount(amount);
         if (transactionDate != null) payment.setTransactionDate(transactionDate);
