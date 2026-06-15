@@ -25,9 +25,6 @@ public class PaymentController {
     public record StkPushRequest(UUID jobId, String phoneNumber) {
     }
 
-    public record PaymentActionRequest(UUID jobId) {
-    }
-
     @PostMapping("/mpesa/stkpush")
     @PreAuthorize("hasAuthority('Client') or hasAuthority('Admin')")
     public ResponseEntity<?> initiateStkPush(
@@ -52,41 +49,57 @@ public class PaymentController {
         return ResponseEntity.ok(paymentService.getPaymentStatus(jobId));
     }
 
+    @GetMapping("/receipt/{jobId}")
+    public ResponseEntity<PaymentStatusResponse> getPaymentReceipt(@PathVariable UUID jobId) {
+        PaymentStatusResponse status = paymentService.getPaymentStatus(jobId);
+        if (status.mpesaReceiptNumber() == null || status.mpesaReceiptNumber().isBlank()) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(status);
+    }
+
+    @PostMapping("/escrow/release/{jobId}")
+    @PreAuthorize("hasAuthority('Client') or hasAuthority('Admin')")
+    public ResponseEntity<Map<String, String>> releaseEscrow(@PathVariable UUID jobId, Principal principal) {
+        paymentService.releaseEscrow(jobId, principal);
+        return ResponseEntity.ok(Map.of("status", "RELEASED", "message", "Escrow released to worker wallet."));
+    }
+
+    @PostMapping("/escrow/refund/{jobId}")
+    @PreAuthorize("hasAuthority('Client') or hasAuthority('Admin')")
+    public ResponseEntity<Map<String, String>> refundEscrow(@PathVariable UUID jobId, Principal principal) {
+        paymentService.refundEscrow(jobId, principal);
+        return ResponseEntity.ok(Map.of("status", "REFUNDED", "message", "Escrow refunded to client wallet."));
+    }
+
     @GetMapping("/escrow/all")
     @PreAuthorize("hasAuthority('Admin')")
     public ResponseEntity<List<PaymentStatusResponse>> getAllEscrowPayments() {
-        return ResponseEntity.status(410).build();
+        return ResponseEntity.ok(paymentService.getAllEscrowPayments());
     }
 
     @PostMapping("/mpesa/callback")
     public ResponseEntity<Map<String, String>> receiveMpesaCallback(
             @RequestBody MpesaCallbackRequest callbackRequest,
             HttpServletRequest servletRequest) {
-        String remoteIp = servletRequest.getHeader("X-Forwarded-For");
-        if (remoteIp == null || remoteIp.isBlank()) {
-            remoteIp = servletRequest.getRemoteAddr();
-        }
+        String remoteIp = CallbackIpResolver.resolve(
+                servletRequest.getHeader("X-Forwarded-For"),
+                servletRequest.getRemoteAddr());
         log.info("Received M-Pesa callback from IP: {}", remoteIp);
         paymentService.handleMpesaCallback(callbackRequest, remoteIp);
         return ResponseEntity.ok(Map.of("status", "received"));
     }
 
-    /**
-     * Webhook endpoint for M-Pesa B2C transaction result (worker payouts)
-     * Called by Safaricom when B2C transaction completes successfully
-     */
     @PostMapping("/mpesa/result")
     public ResponseEntity<Map<String, String>> handleMpesaB2cResult(
             @RequestBody Map<String, Object> payload,
             HttpServletRequest request) {
-        String remoteIp = request.getHeader("X-Forwarded-For");
-        if (remoteIp == null || remoteIp.isBlank()) {
-            remoteIp = request.getRemoteAddr();
-        }
+        String remoteIp = CallbackIpResolver.resolve(
+                request.getHeader("X-Forwarded-For"),
+                request.getRemoteAddr());
         log.info("MPESA B2C result received from {}: {}", remoteIp, payload);
         
         try {
-            // Extract transaction details from M-Pesa B2C result payload
             @SuppressWarnings("unchecked")
             Map<String, Object> result = (Map<String, Object>) payload.get("Result");
             if (result == null) {
@@ -102,7 +115,6 @@ public class PaymentController {
             log.info("B2C transaction {} (conversation: {}, receipt: {}) completed with code {}", 
                 transactionId, conversationId, mpesaReceiptNumber, resultCode);
             
-            // Delegate to B2cPayoutService for processing
             if ("0".equals(resultCode) && conversationId != null) {
                 b2cPayoutService.processB2cSuccess(transactionId, conversationId, mpesaReceiptNumber, remoteIp);
             } else {
@@ -116,25 +128,19 @@ public class PaymentController {
         return ResponseEntity.ok(Map.of("status", "received"));
     }
 
-    /**
-     * Webhook endpoint for M-Pesa B2C transaction timeout
-     * Called by Safaricom when B2C transaction times out before completion
-     */
     @PostMapping("/mpesa/timeout")
     public ResponseEntity<Map<String, String>> handleMpesaB2cTimeout(
             @RequestBody Map<String, Object> payload,
             HttpServletRequest request) {
-        String remoteIp = request.getHeader("X-Forwarded-For");
-        if (remoteIp == null || remoteIp.isBlank()) {
-            remoteIp = request.getRemoteAddr();
-        }
+        String remoteIp = CallbackIpResolver.resolve(
+                request.getHeader("X-Forwarded-For"),
+                request.getRemoteAddr());
         log.warn("MPESA B2C timeout received from {}: {}", remoteIp, payload);
         
         try {
-            // Extract timeout details from M-Pesa B2C timeout payload
-            String conversationId = (String) payload.get("ConversationID");
-            String responseCode = (String) payload.get("ResponseCode");
-            String responseDescription = (String) payload.get("ResponseDescription");
+            String conversationId = extractB2cConversationId(payload);
+            String responseCode = extractB2cField(payload, "ResponseCode");
+            String responseDescription = extractB2cField(payload, "ResponseDescription");
             
             if (conversationId == null || conversationId.isBlank()) {
                 log.warn("B2C timeout payload missing ConversationID from {}", remoteIp);
@@ -144,7 +150,6 @@ public class PaymentController {
             log.error("B2C transaction {} timed out with code {}: {}", 
                 conversationId, responseCode, responseDescription);
             
-            // Delegate to B2cPayoutService for timeout handling and retry scheduling
             b2cPayoutService.processB2cTimeout(conversationId, responseCode, responseDescription, remoteIp);
             
         } catch (Exception e) {
@@ -152,5 +157,35 @@ public class PaymentController {
         }
         
         return ResponseEntity.ok(Map.of("status", "received"));
+    }
+
+    private String extractB2cConversationId(Map<String, Object> payload) {
+        Object root = payload.get("ConversationID");
+        if (root != null) {
+            return String.valueOf(root);
+        }
+        Object result = payload.get("Result");
+        if (result instanceof Map<?, ?> resultMap) {
+            Object nested = resultMap.get("ConversationID");
+            if (nested != null) {
+                return String.valueOf(nested);
+            }
+        }
+        return null;
+    }
+
+    private String extractB2cField(Map<String, Object> payload, String field) {
+        Object root = payload.get(field);
+        if (root != null) {
+            return String.valueOf(root);
+        }
+        Object result = payload.get("Result");
+        if (result instanceof Map<?, ?> resultMap) {
+            Object nested = resultMap.get(field);
+            if (nested != null) {
+                return String.valueOf(nested);
+            }
+        }
+        return null;
     }
 }

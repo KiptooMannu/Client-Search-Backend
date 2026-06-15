@@ -12,7 +12,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,6 +19,7 @@ import java.security.Principal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -70,8 +70,9 @@ public class PaymentService {
         Optional<EscrowPayment> existingPaymentOpt = escrowPaymentRepository
                 .findTopByJobRequestIdOrderByCreatedAtDesc(jobId);
         
-        // Rate limit check
-        long recentAttempts = existingPaymentOpt.map(p -> 1L).orElse(0L);
+        // Rate limit check — count real attempts in the last 5 minutes
+        long recentAttempts = escrowPaymentRepository.countByPhoneNumberAndCreatedAtAfter(
+                normalizedPhone, LocalDateTime.now().minusMinutes(5));
         
         if (existingPaymentOpt.isPresent()) {
             EscrowPayment existingPayment = existingPaymentOpt.get();
@@ -198,7 +199,8 @@ public class PaymentService {
         String mappedStatus = switch (payment.getStatus()) {
             case PENDING -> "PENDING";
             case SUCCESS, ESCROWED, RELEASED, PARTIALLY_SETTLED -> "PAID";
-            case REFUNDED, FAILED -> "FAILED";
+            case REFUNDED -> "REFUNDED";
+            case FAILED -> "FAILED";
             case DISPUTED -> "DISPUTED";
             case B2C_INITIATED, B2C_PENDING, B2C_RETRY_PENDING -> "PROCESSING_PAYOUT";
             case B2C_FAILED, B2C_MAX_RETRIES_EXCEEDED -> "PAYOUT_FAILED";
@@ -254,8 +256,8 @@ public class PaymentService {
         }
 
         EscrowPayment payment = escrowPaymentRepository.findTopByJobRequestIdAndStatusInOrderByCreatedAtDesc(jobId,
-                        List.of(EscrowPaymentStatus.SUCCESS, EscrowPaymentStatus.ESCROWED, EscrowPaymentStatus.PENDING))
-                .orElseThrow(() -> new RuntimeException("Payment record not found or not ready to release."));
+                        List.of(EscrowPaymentStatus.SUCCESS, EscrowPaymentStatus.ESCROWED))
+                .orElseThrow(() -> new RuntimeException("Payment record not found or not ready to release. Payment must be confirmed first."));
 
         ensureStatusTransition(payment, EscrowPaymentStatus.RELEASED);
 
@@ -474,7 +476,7 @@ public class PaymentService {
 
         String callbackKey = buildCallbackIdempotencyKey(checkoutRequestId);
 
-        if (!mpesaService.isAcceptedCallbackSource(remoteIp)) {
+        if (!"STK_QUERY_RECONCILE".equals(remoteIp) && !mpesaService.isAcceptedCallbackSource(remoteIp)) {
             LOGGER.error("SECURITY: Rejected MPESA callback from unauthorized source {} for CheckoutRequestID={}. " +
                 "This payment will be auto-refunded if not corrected. Verify MPESA_CALLBACK_ALLOWED_IPS config.", 
                 remoteIp, checkoutRequestId);
@@ -588,18 +590,20 @@ public class PaymentService {
             LOGGER.info("✓✓✓ PAYMENT SUCCESS for CheckoutRequestID={}, Receipt={}, Amount={}. Status->SUCCESS", 
                 checkoutRequestId, receiptNumber, amount);
 
-            // Update job status to indicate payment was received
+            // Update job status when payment is captured in escrow
             JobRequest job = payment.getJobRequest();
             if (job != null) {
-                if (job.getStatus() == JobStatus.PENDING) {
-                    job.setStatus(JobStatus.ASSIGNED);
+                if (job.getStatus() == JobStatus.PENDING
+                        || job.getStatus() == JobStatus.ACCEPTED
+                        || job.getStatus() == JobStatus.ASSIGNED) {
+                    job.setStatus(JobStatus.IN_PROGRESS);
                     jobRequestRepository.save(job);
-                    LOGGER.info("✓ Job {} status: PENDING -> ASSIGNED (payment captured in escrow)", job.getId());
+                    LOGGER.info("Job {} status -> IN_PROGRESS (payment captured in escrow)", job.getId());
                 } else {
-                    LOGGER.info("ℹ Job {} already has status {}, not transitioning", job.getId(), job.getStatus());
+                    LOGGER.info("Job {} already has status {}, not transitioning", job.getId(), job.getStatus());
                 }
             } else {
-                LOGGER.warn("⚠ No job associated with payment for CheckoutRequestID={}", checkoutRequestId);
+                LOGGER.warn("No job associated with payment for CheckoutRequestID={}", checkoutRequestId);
             }
             
         } else if (resultCode == 1032) {
@@ -667,19 +671,102 @@ public class PaymentService {
                 String.format("resultCode=%d, resultDesc=%s, receiptNumber=%s", 
                     resultCode, resultDesc, receiptNumber));
 
-        webhookProcessedLogRepository.save(WebhookProcessedLog.builder()
-                .id(callbackKey)
-                .checkoutRequestId(checkoutRequestId)
-                .resultCode(resultCode)
-                .resultDescription(resultDesc)
-                .payload(String.valueOf(callbackRequest))
-                .build());
+        webhookProcessedLogRepository.findById(callbackKey).ifPresentOrElse(
+                log -> {
+                    log.setResultCode(resultCode);
+                    log.setResultDescription(resultDesc);
+                    log.setPayload(String.valueOf(callbackRequest));
+                    webhookProcessedLogRepository.save(log);
+                },
+                () -> webhookProcessedLogRepository.save(WebhookProcessedLog.builder()
+                        .id(callbackKey)
+                        .checkoutRequestId(checkoutRequestId)
+                        .resultCode(resultCode)
+                        .resultDescription(resultDesc)
+                        .payload(String.valueOf(callbackRequest))
+                        .build())
+        );
 
-        LOGGER.info("MPESA callback processed for CheckoutRequestID={} with ResultCode={} and final status={}", 
+        LOGGER.info("MPESA callback processed for CheckoutRequestID={} with ResultCode={} and final status={}",
             checkoutRequestId, resultCode, savedPayment.getStatus());
     }
 
-    @Scheduled(cron = "0 */5 * * * *")
+    /**
+     * Reconcile PENDING payments by querying Safaricom STK status API (fallback when callback is missed).
+     */
+    @Transactional
+    public void reconcilePendingStkPayments() {
+        LocalDateTime now = LocalDateTime.now();
+        List<EscrowPayment> pendingPayments = escrowPaymentRepository.findByStatus(EscrowPaymentStatus.PENDING);
+
+        for (EscrowPayment payment : pendingPayments) {
+            if (payment.getCheckoutRequestId() == null || payment.getCheckoutRequestId().isBlank()) {
+                continue;
+            }
+            if (payment.getTimeoutAt() != null && payment.getTimeoutAt().isAfter(now.minusMinutes(1))) {
+                continue;
+            }
+            try {
+                Map<String, Object> queryResult = mpesaService.queryStkPushStatus(payment.getCheckoutRequestId());
+                Object resultCodeObj = queryResult.get("ResultCode");
+                if (resultCodeObj == null) {
+                    continue;
+                }
+                int resultCode = Integer.parseInt(String.valueOf(resultCodeObj));
+                if (resultCode != 0) {
+                    continue;
+                }
+
+                LOGGER.info("STK query confirmed success for job {} checkoutRequestId={}",
+                        payment.getJobRequest().getId(), payment.getCheckoutRequestId());
+
+                MpesaCallbackRequest callback = buildSyntheticSuccessCallback(payment.getCheckoutRequestId(), queryResult);
+                handleMpesaCallback(callback, "STK_QUERY_RECONCILE");
+            } catch (Exception e) {
+                LOGGER.warn("STK query reconciliation failed for payment {}: {}",
+                        payment.getId(), e.getMessage());
+            }
+        }
+    }
+
+    private MpesaCallbackRequest buildSyntheticSuccessCallback(String checkoutRequestId, Map<String, Object> queryResult) {
+        String receipt = queryResult.get("MpesaReceiptNumber") != null
+                ? String.valueOf(queryResult.get("MpesaReceiptNumber")) : null;
+        Object amountObj = queryResult.get("Amount");
+        Object phoneObj = queryResult.get("PhoneNumber");
+        Object dateObj = queryResult.get("TransactionDate");
+
+        java.util.ArrayList<MpesaCallbackRequest.Item> items = new java.util.ArrayList<>();
+        if (amountObj != null) {
+            items.add(new MpesaCallbackRequest.Item("Amount", amountObj));
+        }
+        if (receipt != null) {
+            items.add(new MpesaCallbackRequest.Item("MpesaReceiptNumber", receipt));
+        }
+        if (phoneObj != null) {
+            items.add(new MpesaCallbackRequest.Item("PhoneNumber", phoneObj));
+        }
+        if (dateObj != null) {
+            items.add(new MpesaCallbackRequest.Item("TransactionDate", dateObj));
+        }
+
+        MpesaCallbackRequest.CallbackMetadata metadata = items.isEmpty()
+                ? null
+                : new MpesaCallbackRequest.CallbackMetadata(items);
+
+        MpesaCallbackRequest.StkCallback stkCallback = new MpesaCallbackRequest.StkCallback(
+                null,
+                checkoutRequestId,
+                0,
+                "Reconciled via STK query",
+                metadata
+        );
+        return new MpesaCallbackRequest(new MpesaCallbackRequest.Body(stkCallback));
+    }
+
+    /**
+     * Auto-refund PENDING payments that timed out with no M-Pesa transaction evidence.
+     */
     @Transactional
     public void refundExpiredPendingPayments() {
         try {
@@ -695,22 +782,12 @@ public class PaymentService {
                     // ⚠️ CRITICAL SAFETY CHECK: If payment has transaction evidence, DO NOT auto-refund
                     // This prevents false refunds when MPESA callback is delayed
                     if (payment.getMpesaReceiptNumber() != null || payment.getTransactionDate() != null) {
-                        LOGGER.warn("⚠️ SAFETY: Skipping auto-refund for job {} - Payment shows transaction evidence " +
-                                "(receipt={}, date={}). Likely delayed callback. Requires manual review.",
+                        LOGGER.warn("SAFETY: Skipping auto-refund for job {} - transaction evidence present (receipt={}, date={})",
                                 jobId, payment.getMpesaReceiptNumber(), payment.getTransactionDate());
                         continue;
                     }
 
-                    // Also check if amount was filled in (indicates callback was processed)
-                    if (payment.getAmount() != null && payment.getAmount() > 0 && 
-                        (payment.getFailureReason() == null || payment.getFailureReason().isBlank())) {
-                        LOGGER.warn("⚠️ SAFETY: Skipping auto-refund for job {} - Amount is set but no failure reason. " +
-                                "Likely delayed success callback. Requires manual review.", jobId);
-                        continue;
-                    }
-
-                    // Safe to refund: no evidence of successful transaction
-                    LOGGER.info("🔄 Auto-refunding PENDING payment for job {} (timeout, no evidence of transaction)", jobId);
+                    LOGGER.info("Auto-refunding PENDING payment for job {} (timeout, no callback received)", jobId);
                     refundEscrowBySystem(jobId, "Payment auto-refunded after timeout (no callback received).");
                     LOGGER.info("✓ Auto-refunded expired payment record {}", payment.getId());
                     

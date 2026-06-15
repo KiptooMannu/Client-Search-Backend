@@ -66,6 +66,8 @@ public class DataInitializer implements CommandLineRunner {
             log.warn("Could not drop constraint: " + e.getMessage());
         }
 
+        syncEscrowPaymentStatusConstraint();
+
         if (shouldSeed) {
             log.info("--- Starting Database Seeding ---");
 
@@ -557,6 +559,23 @@ public class DataInitializer implements CommandLineRunner {
         for (int i = 1; i <= 40; i++) {
             createClient("client_user_" + i, "client" + i + "@kazikonnect.com", "Client " + i,
                     "Client Profile " + i, "07" + String.format("%08d", 2000 + i));
+        }
+    }
+
+    private void syncEscrowPaymentStatusConstraint() {
+        try {
+            jdbcTemplate.execute("ALTER TABLE escrow_payments DROP CONSTRAINT IF EXISTS escrow_payments_status_check");
+            jdbcTemplate.execute("""
+                ALTER TABLE escrow_payments ADD CONSTRAINT escrow_payments_status_check
+                CHECK (status IN (
+                    'PENDING', 'SUCCESS', 'ESCROWED', 'RELEASED', 'REFUNDED', 'FAILED',
+                    'PARTIALLY_SETTLED', 'DISPUTED', 'B2C_INITIATED', 'B2C_PENDING',
+                    'B2C_RETRY_PENDING', 'B2C_FAILED', 'B2C_MAX_RETRIES_EXCEEDED'
+                ))
+                """);
+            log.info("Synced escrow_payments_status_check constraint (includes SUCCESS).");
+        } catch (Exception e) {
+            log.warn("Could not sync escrow payment status constraint: {}", e.getMessage());
         }
     }
 

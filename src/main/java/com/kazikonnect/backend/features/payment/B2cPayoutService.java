@@ -70,8 +70,10 @@ public class B2cPayoutService {
         }
 
         User worker = job.getWorker().getUser();
-        // Phone number is stored in the payment record, not on the user object
-        String phoneNumber = payment.getPhoneNumber();
+        String phoneNumber = job.getWorker().getPhoneNumber();
+        if (phoneNumber == null || phoneNumber.isBlank()) {
+            phoneNumber = payment.getPhoneNumber();
+        }
 
         // Validate phone number
         if (phoneNumber == null || phoneNumber.isBlank()) {

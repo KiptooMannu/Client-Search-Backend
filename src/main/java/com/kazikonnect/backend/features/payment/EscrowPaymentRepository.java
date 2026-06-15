@@ -34,6 +34,8 @@ public interface EscrowPaymentRepository extends JpaRepository<EscrowPayment, UU
 
     long countByStatusAndUpdatedAtBefore(EscrowPaymentStatus status, LocalDateTime updatedAt);
 
+    long countByPhoneNumberAndCreatedAtAfter(String phoneNumber, LocalDateTime createdAt);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT e FROM EscrowPayment e WHERE e.checkoutRequestId = :checkoutRequestId")
     Optional<EscrowPayment> findByCheckoutRequestIdForUpdate(@Param("checkoutRequestId") String checkoutRequestId);

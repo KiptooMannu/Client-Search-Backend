@@ -11,7 +11,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.UUID;
 
 /**
  * Payment Retry Scheduler
@@ -32,13 +31,12 @@ public class PaymentRetryScheduler {
      * Retry B2C payouts that are ready for retry
      * Runs every 1 minute to check for payments ready to retry
      */
-    @Scheduled(fixedDelay = 60000, initialDelay = 10000)  // Check every 60 seconds
+    @Scheduled(fixedDelay = 60000, initialDelay = 10000)
     @Transactional
     public void retryB2cPayouts() {
         try {
             LocalDateTime now = LocalDateTime.now();
             
-            // Find all payments ready for retry
             List<EscrowPayment> readyForRetry = escrowPaymentRepository.findByStatusAndB2cNextRetryAtBefore(
                 EscrowPaymentStatus.B2C_RETRY_PENDING, now);
 
@@ -50,16 +48,13 @@ public class PaymentRetryScheduler {
                 try {
                     LOGGER.info("Retrying B2C payout for job {} (attempt {})", 
                         payment.getJobRequest().getId(), payment.getB2cRetryCount());
-
                     b2cPayoutService.retryB2cPayout(payment);
-
                 } catch (Exception e) {
                     LOGGER.error("Failed to retry B2C payout for job {}: {}", 
                         payment.getJobRequest().getId(), e.getMessage(), e);
                 }
             }
 
-            // Find all withdrawal requests ready for retry
             List<WithdrawalRequest> withdrawalsReadyForRetry = withdrawalRequestRepository.findByStatusAndB2cNextRetryAtBefore(
                 "B2C_RETRY_PENDING", now);
 
@@ -71,9 +66,7 @@ public class PaymentRetryScheduler {
                 try {
                     LOGGER.info("Retrying B2C withdrawal payout {} (attempt {})", 
                         withdrawal.getId(), withdrawal.getB2cRetryCount());
-
                     b2cPayoutService.retryWithdrawalPayout(withdrawal);
-
                 } catch (Exception e) {
                     LOGGER.error("Failed to retry B2C payout for withdrawal {}: {}", 
                         withdrawal.getId(), e.getMessage(), e);
@@ -86,109 +79,59 @@ public class PaymentRetryScheduler {
     }
 
     /**
-     * Cleanup completed and failed payments (archive old records)
-     * Runs daily at 2 AM to clean up old payment records
+     * Query Safaricom for missed STK callbacks every 2 minutes.
      */
-    @Scheduled(cron = "0 0 2 * * *")  // 2:00 AM daily
+    @Scheduled(fixedDelay = 120000, initialDelay = 30000)
+    public void reconcileMissedStkCallbacks() {
+        try {
+            paymentService.reconcilePendingStkPayments();
+        } catch (Exception e) {
+            LOGGER.error("Error in STK reconciliation scheduler: {}", e.getMessage(), e);
+        }
+    }
+
+    @Scheduled(cron = "0 0 2 * * *")
     @Transactional
     public void cleanupOldPayments() {
         try {
             LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(30);
-
-            // Archive released payments older than 30 days
             long releasedCount = escrowPaymentRepository.countByStatusAndUpdatedAtBefore(
                 EscrowPaymentStatus.RELEASED, thirtyDaysAgo);
-
-            // Archive failed payments older than 30 days
             long failedCount = escrowPaymentRepository.countByStatusAndUpdatedAtBefore(
                 EscrowPaymentStatus.FAILED, thirtyDaysAgo);
-
             if (releasedCount > 0 || failedCount > 0) {
                 LOGGER.info("Cleanup job: {} released payments, {} failed payments ready for archival", 
                     releasedCount, failedCount);
-                // In production, implement archival to separate history table
             }
-
         } catch (Exception e) {
             LOGGER.error("Error in payment cleanup scheduler: {}", e.getMessage(), e);
         }
     }
 
-    /**
-     * Monitor B2C max retries exceeded payments
-     * Alert admin if payments are stuck in max retries state
-     */
-    @Scheduled(fixedDelay = 300000, initialDelay = 30000)  // Check every 5 minutes
+    @Scheduled(fixedDelay = 300000, initialDelay = 30000)
     @Transactional
     public void monitorMaxRetriesExceeded() {
         try {
             List<EscrowPayment> maxRetriesExceeded = 
                 escrowPaymentRepository.findByStatus(EscrowPaymentStatus.B2C_MAX_RETRIES_EXCEEDED);
-
             if (!maxRetriesExceeded.isEmpty()) {
                 LOGGER.warn("Found {} B2C payments with max retries exceeded - requires manual intervention", 
                     maxRetriesExceeded.size());
             }
-
         } catch (Exception e) {
             LOGGER.error("Error monitoring max retries: {}", e.getMessage(), e);
         }
     }
 
     /**
-     * Refund expired pending payments
-     * Automatically refund payments that are stuck in PENDING after timeout
-     * BUT: Skip if there's evidence the payment actually completed (receipt/date/status changed)
+     * Auto-refund PENDING payments that timed out without M-Pesa transaction evidence.
      */
-    @Scheduled(fixedDelay = 300000, initialDelay = 20000)  // Check every 5 minutes
-    @Transactional
+    @Scheduled(fixedDelay = 300000, initialDelay = 20000)
     public void refundExpiredPendingPayments() {
         try {
-            LocalDateTime now = LocalDateTime.now();
-            
-            // Find payments stuck in PENDING after timeout threshold
-            List<EscrowPayment> expiredPayments = 
-                escrowPaymentRepository.findByStatusAndTimeoutAtBefore(
-                    EscrowPaymentStatus.PENDING, now);
-
-            LOGGER.info("Found {} expired PENDING payments", expiredPayments.size());
-
-            for (EscrowPayment payment : expiredPayments) {
-                try {
-                    UUID jobId = payment.getJobRequest().getId();
-                    
-                    // CRITICAL SAFETY CHECK: If payment has transaction evidence, DO NOT auto-refund
-                    // This prevents false refunds when MPESA callback is delayed
-                    if (payment.getMpesaReceiptNumber() != null || payment.getTransactionDate() != null) {
-                        LOGGER.warn("⚠️ SAFETY: Skipping auto-refund for job {} - Payment shows transaction evidence " +
-                                "(receipt={}, date={}). Likely delayed callback. Requires manual review.",
-                                jobId, payment.getMpesaReceiptNumber(), payment.getTransactionDate());
-                        continue;
-                    }
-
-                    // Also check if amount was filled in (indicates callback was processed)
-                    if (payment.getAmount() != null && payment.getAmount() > 0 && 
-                        (payment.getFailureReason() == null || payment.getFailureReason().isBlank())) {
-                        LOGGER.warn("⚠️ SAFETY: Skipping auto-refund for job {} - Amount is set but no failure reason. " +
-                                "Likely delayed success callback. Requires manual review.", jobId);
-                        continue;
-                    }
-
-                    // Safe to refund: no evidence of successful transaction
-                    LOGGER.info("🔄 Auto-refunding PENDING payment for job {} (timeout, no evidence of transaction)", jobId);
-                    
-                    // Use the central refund path which also credits the client's wallet and writes audit logs
-                    paymentService.refundEscrowBySystem(jobId, "Payment auto-refunded after timeout (no callback received).");
-
-                } catch (Exception e) {
-                    LOGGER.error("Failed to auto-refund expired payment {}: {}", 
-                        payment.getId(), e.getMessage(), e);
-                }
-            }
-
+            paymentService.refundExpiredPendingPayments();
         } catch (Exception e) {
             LOGGER.error("Error in expired payment refund scheduler: {}", e.getMessage(), e);
         }
     }
-
 }

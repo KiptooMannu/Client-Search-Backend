@@ -46,11 +46,20 @@ public class MpesaService {
     @Value("${mpesa.callback-url}")
     private String callbackUrl;
 
+    @Value("${mpesa.b2c-result-url:}")
+    private String b2cResultUrl;
+
+    @Value("${mpesa.b2c-timeout-url:}")
+    private String b2cTimeoutUrl;
+
     @Value("${mpesa.callback-allowed-ips:}")
     private String callbackAllowedIps;
 
     @Value("${mpesa.security-credential:}")
     private String securityCredential;
+
+    @Value("${mpesa.b2c-security-credential:}")
+    private String b2cSecurityCredential;
 
     private final Logger LOGGER = LoggerFactory.getLogger(MpesaService.class);
     private final RestTemplate restTemplate;
@@ -162,6 +171,7 @@ public class MpesaService {
     }
 
     public boolean isAcceptedCallbackSource(String remoteIp) {
+        String clientIp = CallbackIpResolver.resolve(remoteIp, remoteIp);
         if (callbackAllowedIps == null || callbackAllowedIps.isBlank()) {
             LOGGER.warn("MPESA callback source validation is disabled because MPESA_CALLBACK_ALLOWED_IPS is not configured.");
             return true;
@@ -171,7 +181,11 @@ public class MpesaService {
                 .map(String::trim)
                 .filter(ip -> !ip.isBlank())
                 .collect(Collectors.toList());
-        return permitted.contains(remoteIp);
+        boolean accepted = permitted.contains(clientIp);
+        if (!accepted) {
+            LOGGER.warn("MPESA callback rejected for IP {} (raw header: {})", clientIp, remoteIp);
+        }
+        return accepted;
     }
 
     public String normalizePhoneNumber(String phoneNumber) {
@@ -251,8 +265,8 @@ public class MpesaService {
         payload.put("PartyA", shortcode);  // Sender (business shortcode)
         payload.put("PartyB", normalizePhoneNumber(phoneNumber));  // Receiver phone
         payload.put("Remarks", "Worker payout");
-        payload.put("QueueTimeOutURL", callbackUrl.replace("/callback", "/timeout"));
-        payload.put("ResultURL", callbackUrl.replace("/callback", "/result"));
+        payload.put("QueueTimeOutURL", resolveB2cTimeoutUrl());
+        payload.put("ResultURL", resolveB2cResultUrl());
         payload.put("AccountReference", accountReference);
         payload.put("TransactionDesc", transactionDesc);
 
@@ -307,12 +321,74 @@ public class MpesaService {
     }
 
     /**
+     * Query STK push status when callback was missed or delayed.
+     */
+    public Map<String, Object> queryStkPushStatus(String checkoutRequestId) {
+        if (checkoutRequestId == null || checkoutRequestId.isBlank()) {
+            throw new IllegalArgumentException("CheckoutRequestID is required for STK query.");
+        }
+
+        String accessToken = fetchAccessToken();
+        String url = getBaseUrl() + "/mpesa/stkpushquery/v1/query";
+
+        String timestamp = LocalDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+        String password = Base64.getEncoder()
+                .encodeToString((shortcode + passkey + timestamp).getBytes(StandardCharsets.UTF_8));
+
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("BusinessShortCode", shortcode);
+        payload.put("Password", password);
+        payload.put("Timestamp", timestamp);
+        payload.put("CheckoutRequestID", checkoutRequestId);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(accessToken);
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setAccept(List.of(MediaType.APPLICATION_JSON));
+
+        try {
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.POST,
+                    new HttpEntity<>(payload, headers),
+                    new ParameterizedTypeReference<Map<String, Object>>() {
+                    });
+            Map<String, Object> body = response.getBody();
+            if (body == null) {
+                throw new RuntimeException("Empty response from M-PESA STK query.");
+            }
+            LOGGER.info("STK query response for {}: {}", checkoutRequestId, body);
+            return body;
+        } catch (HttpStatusCodeException e) {
+            throw new RuntimeException("M-PESA STK query failed: " + e.getStatusCode() + " " + e.getResponseBodyAsString(), e);
+        } catch (RestClientException e) {
+            throw new RuntimeException("Network error during M-PESA STK query: " + e.getMessage(), e);
+        }
+    }
+
+    private String resolveB2cResultUrl() {
+        if (b2cResultUrl != null && !b2cResultUrl.isBlank()) {
+            return b2cResultUrl;
+        }
+        return callbackUrl.replace("/callback", "/result");
+    }
+
+    private String resolveB2cTimeoutUrl() {
+        if (b2cTimeoutUrl != null && !b2cTimeoutUrl.isBlank()) {
+            return b2cTimeoutUrl;
+        }
+        return callbackUrl.replace("/callback", "/timeout");
+    }
+
+    /**
      * Get security credential (encrypted initiator password)
-     * In production, this should be properly encrypted. For now, placeholder.
      */
     private String getSecurityCredential() {
+        if (b2cSecurityCredential != null && !b2cSecurityCredential.isBlank()) {
+            return b2cSecurityCredential;
+        }
         if (securityCredential == null || securityCredential.isBlank()) {
-            throw new IllegalStateException("MPESA_SECURITY_CREDENTIAL must be configured for B2C payouts.");
+            throw new IllegalStateException("MPESA_B2C_SECURITY_CREDENTIAL or MPESA_SECURITY_CREDENTIAL must be configured for B2C payouts.");
         }
         return securityCredential;
     }
