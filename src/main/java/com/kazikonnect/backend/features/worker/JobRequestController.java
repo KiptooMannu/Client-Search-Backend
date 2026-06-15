@@ -3,7 +3,10 @@ package com.kazikonnect.backend.features.worker;
 import com.kazikonnect.backend.features.auth.User;
 import com.kazikonnect.backend.features.auth.UserRepository;
 import com.kazikonnect.backend.features.payment.PaymentService;
+import com.kazikonnect.backend.features.payment.EscrowPayment;
+import com.kazikonnect.backend.features.payment.EscrowPaymentRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,6 +18,7 @@ import java.security.Principal;
 @RestController
 @RequestMapping("/api/jobs")
 @RequiredArgsConstructor
+@Slf4j
 @SuppressWarnings("null")
 public class JobRequestController {
 
@@ -24,13 +28,14 @@ public class JobRequestController {
     private final com.kazikonnect.backend.features.common.NotificationRepository notificationRepository;
     private final com.kazikonnect.backend.features.common.MessageRepository messageRepository;
     private final PaymentService paymentService;
+    private final EscrowPaymentRepository escrowPaymentRepository;
 
     // READ: Get all job requests (Admin Oversight)
     @GetMapping("/all")
     @PreAuthorize("hasAuthority('Admin')")
     public ResponseEntity<?> getAllJobs() {
         return jobRequestRepository.findAll().stream()
-                .map(JobRequestDTO::from)
+                .map(this::toDtoWithPayment)
                 .collect(Collectors.collectingAndThen(Collectors.toList(), ResponseEntity::ok));
     }
 
@@ -90,7 +95,7 @@ public class JobRequestController {
             return ResponseEntity.status(403).body("Forbidden.");
         }
         return jobRequestRepository.findAllByClientId(clientId).stream()
-                .map(JobRequestDTO::from)
+                .map(this::toDtoWithPayment)
                 .collect(Collectors.collectingAndThen(Collectors.toList(), ResponseEntity::ok));
     }
 
@@ -112,7 +117,7 @@ public class JobRequestController {
             return ResponseEntity.status(403).body("Forbidden.");
         }
         return jobRequestRepository.findAllByWorkerId(worker.getId()).stream()
-                .map(JobRequestDTO::from)
+                .map(this::toDtoWithPayment)
                 .collect(Collectors.collectingAndThen(Collectors.toList(), ResponseEntity::ok));
     }
 
@@ -150,32 +155,37 @@ public class JobRequestController {
                 try {
                     paymentService.releaseEscrow(jobId, principal);
                 } catch (RuntimeException e) {
+                    log.warn("Work approval failed for job {}: {}", jobId, e.getMessage());
                     return ResponseEntity.badRequest().body(
-                            "Cannot approve work until payment is captured: " + e.getMessage());
+                            "Cannot approve work: " + (e.getMessage() != null ? e.getMessage() : "Payment is not ready for release."));
                 }
 
                 JobRequest updatedJob = jobRequestRepository.findById(jobId).orElse(job);
 
                 if (oldStatus != JobStatus.APPROVED) {
-                    // 1. Notification to Worker
-                    notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
-                            .user(updatedJob.getWorker().getUser())
-                            .title("Work Approved & Payment Released!")
-                            .message(updatedJob.getClient().getFullName()
-                                    + " has approved your work. Payment is now available in your wallet.")
-                            .type("SUCCESS")
-                            .build());
+                    try {
+                        String clientName = updatedJob.getClient() != null ? updatedJob.getClient().getFullName() : "Client";
+                        String workerName = updatedJob.getWorker() != null ? safeWorkerName(updatedJob.getWorker()) : "Worker";
 
-                    // 2. Automatic Message
-                    messageRepository.save(com.kazikonnect.backend.features.common.Message.builder()
-                            .sender(actor)
-                            .receiver(updatedJob.getWorker().getUser())
-                            .content("Hi " + updatedJob.getWorker().getFullName() + ", I've approved the work. Great job!")
-                            .isRead(false)
-                            .build());
+                        notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                                .user(updatedJob.getWorker().getUser())
+                                .title("Work Approved & Payment Released!")
+                                .message(clientName + " has approved your work. Payment is now available in your wallet.")
+                                .type("SUCCESS")
+                                .build());
+
+                        messageRepository.save(com.kazikonnect.backend.features.common.Message.builder()
+                                .sender(actor)
+                                .receiver(updatedJob.getWorker().getUser())
+                                .content("Hi " + workerName + ", I've approved the work. Great job!")
+                                .isRead(false)
+                                .build());
+                    } catch (Exception notifyEx) {
+                        log.warn("Approval succeeded for job {} but notification delivery failed: {}", jobId, notifyEx.getMessage());
+                    }
                 }
 
-                return ResponseEntity.ok(JobRequestDTO.from(updatedJob));
+                return ResponseEntity.ok(toDtoWithPayment(updatedJob));
             }
 
             job.setStatus(targetStatus);
@@ -444,5 +454,23 @@ public class JobRequestController {
             jobRequestRepository.delete(job);
             return ResponseEntity.ok(java.util.Map.of("message", "Job request removed successfully."));
         }).orElse(ResponseEntity.notFound().build());
+    }
+
+    private JobRequestDTO toDtoWithPayment(JobRequest job) {
+        EscrowPayment payment = escrowPaymentRepository.findTopByJobRequestIdOrderByCreatedAtDesc(job.getId()).orElse(null);
+        return JobRequestDTO.from(job, payment);
+    }
+
+    private String safeWorkerName(WorkerProfile worker) {
+        if (worker == null) {
+            return "Worker";
+        }
+        if (worker.getFullName() != null && !worker.getFullName().isBlank()) {
+            return worker.getFullName();
+        }
+        if (worker.getUser() != null) {
+            return worker.getUser().getFullName();
+        }
+        return "Worker";
     }
 }

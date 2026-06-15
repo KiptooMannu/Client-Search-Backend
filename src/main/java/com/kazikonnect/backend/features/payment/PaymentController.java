@@ -78,6 +78,15 @@ public class PaymentController {
         return ResponseEntity.ok(paymentService.getAllEscrowPayments());
     }
 
+    @GetMapping("/admin/fees")
+    @PreAuthorize("hasAuthority('Admin')")
+    public ResponseEntity<List<PlatformFeeRecordDTO>> getPlatformFees(
+            @RequestParam(required = false) String date,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String search) {
+        return ResponseEntity.ok(paymentService.getPlatformFeeRecords(date, status, search));
+    }
+
     @PostMapping("/mpesa/callback")
     public ResponseEntity<Map<String, String>> receiveMpesaCallback(
             @RequestBody MpesaCallbackRequest callbackRequest,

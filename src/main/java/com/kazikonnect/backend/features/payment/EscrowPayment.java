@@ -104,6 +104,9 @@ public class EscrowPayment {
 
     @PrePersist
     protected void onCreate() {
+        if (version == null) {
+            version = 0L;
+        }
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
     }

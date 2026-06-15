@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.Principal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -115,7 +116,6 @@ public class PaymentService {
                 existingPayment.setMpesaReceiptNumber(null);
                 existingPayment.setTransactionDate(null);
                 existingPayment.setAmount(amount);
-                existingPayment.setVersion(existingPayment.getVersion() + 1); // Increment version for optimistic locking
                 
                 EscrowPayment savedPayment = escrowPaymentRepository.save(existingPayment);
                 saveAuditLog(savedPayment, "STK_PUSH_RETRY", principal, 
@@ -244,6 +244,76 @@ public class PaymentService {
         )).collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
+    public List<PlatformFeeRecordDTO> getPlatformFeeRecords(String date, String status, String search) {
+        String normalizedSearch = search != null ? search.trim().toLowerCase() : "";
+        final LocalDate filterDate = (date != null && !date.isBlank()) ? LocalDate.parse(date) : null;
+        String normalizedStatus = status != null ? status.trim() : "";
+
+        return escrowPaymentRepository.findAll().stream()
+                .filter(payment -> payment.getJobRequest() != null)
+                .filter(payment -> {
+                    if (filterDate == null) {
+                        return true;
+                    }
+                    LocalDateTime tx = payment.getTransactionDate() != null
+                            ? payment.getTransactionDate()
+                            : payment.getCreatedAt();
+                    return tx != null && tx.toLocalDate().equals(filterDate);
+                })
+                .filter(payment -> normalizedStatus.isBlank()
+                        || "All".equalsIgnoreCase(normalizedStatus)
+                        || payment.getStatus().name().equalsIgnoreCase(normalizedStatus))
+                .filter(payment -> {
+                    if (normalizedSearch.isBlank()) {
+                        return true;
+                    }
+                    JobRequest job = payment.getJobRequest();
+                    String clientName = job.getClient() != null ? job.getClient().getFullName() : "";
+                    String workerName = job.getWorker() != null && job.getWorker().getFullName() != null
+                            ? job.getWorker().getFullName() : "";
+                    String haystack = String.join(" ",
+                            job.getId().toString(),
+                            clientName,
+                            workerName,
+                            job.getDescription() != null ? job.getDescription() : "",
+                            payment.getStatus().name(),
+                            job.getStatus().name()
+                    ).toLowerCase();
+                    return haystack.contains(normalizedSearch);
+                })
+                .sorted((a, b) -> {
+                    LocalDateTime bTime = b.getTransactionDate() != null ? b.getTransactionDate() : b.getCreatedAt();
+                    LocalDateTime aTime = a.getTransactionDate() != null ? a.getTransactionDate() : a.getCreatedAt();
+                    if (bTime == null && aTime == null) return 0;
+                    if (bTime == null) return 1;
+                    if (aTime == null) return -1;
+                    return bTime.compareTo(aTime);
+                })
+                .map(payment -> {
+                    JobRequest job = payment.getJobRequest();
+                    double total = payment.getAmount() != null ? payment.getAmount() : 0.0;
+                    double fee = payment.getPlatformFee() != null ? payment.getPlatformFee() : calculatePlatformFee(total);
+                    double net = payment.getWorkerAmount() != null ? payment.getWorkerAmount() : (total - fee);
+                    return new PlatformFeeRecordDTO(
+                            job.getId().toString(),
+                            job.getClient() != null ? job.getClient().getFullName() : "Client",
+                            job.getWorker() != null && job.getWorker().getFullName() != null
+                                    ? job.getWorker().getFullName() : "Worker",
+                            job.getDescription(),
+                            total,
+                            fee,
+                            net,
+                            payment.getStatus().name(),
+                            job.getStatus().name(),
+                            formatDateTime(payment.getTransactionDate()),
+                            formatDateTime(payment.getCreatedAt()),
+                            payment.getMpesaReceiptNumber()
+                    );
+                })
+                .collect(Collectors.toList());
+    }
+
     @Transactional
     public void releaseEscrow(UUID jobId, Principal principal) {
         User actor = getActor(principal);
@@ -261,19 +331,24 @@ public class PaymentService {
 
         if (payment.getStatus() == EscrowPaymentStatus.RELEASED) {
             job.setStatus(JobStatus.APPROVED);
+            if (job.getApprovedAt() == null) {
+                job.setApprovedAt(LocalDateTime.now());
+            }
             jobRequestRepository.save(job);
             return;
         }
 
         ensureStatusTransition(payment, EscrowPaymentStatus.RELEASED);
 
-        double fee = calculatePlatformFee(payment.getAmount());
+        double paymentAmount = payment.getAmount() != null ? payment.getAmount() : 0.0;
+        double fee = payment.getPlatformFee() != null ? payment.getPlatformFee() : calculatePlatformFee(paymentAmount);
+        double workerNet = payment.getWorkerAmount() != null ? payment.getWorkerAmount() : (paymentAmount - fee);
+
         payment.setPlatformFee(fee);
-        payment.setWorkerAmount(payment.getAmount() - fee);
+        payment.setWorkerAmount(workerNet);
         payment.setStatus(EscrowPaymentStatus.RELEASED);
         payment.setMessage("Payment released to worker. Platform fee: KES " + fee);
         payment.setUpdatedAt(LocalDateTime.now());
-        payment.setVersion(payment.getVersion() + 1);
 
         // ATOMIC: Update payment and credit wallet in same transaction
         escrowPaymentRepository.save(payment);
@@ -282,12 +357,11 @@ public class PaymentService {
             throw new RuntimeException("Worker account not found for this job.");
         }
 
-        // Keep the job approved after the client releases escrow.
         job.setStatus(JobStatus.APPROVED);
+        job.setApprovedAt(LocalDateTime.now());
         jobRequestRepository.save(job);
 
-        // This credit happens atomically within the same transaction
-        walletService.creditWallet(job.getWorker().getUser(), payment.getWorkerAmount(),
+        walletService.creditWallet(job.getWorker().getUser(), workerNet,
                 "Payment release for job " + jobId);
 
         saveAuditLog(payment, "PAYMENT_RELEASED", principal, "Payment released to worker", null);
@@ -318,7 +392,6 @@ public class PaymentService {
         payment.setStatus(EscrowPaymentStatus.REFUNDED);
         payment.setMessage("Payment refunded to payer.");
         payment.setUpdatedAt(LocalDateTime.now());
-        payment.setVersion(payment.getVersion() + 1);
 
         // ATOMIC: Update payment and credit wallet in same transaction
         escrowPaymentRepository.save(payment);
@@ -348,7 +421,6 @@ public class PaymentService {
         payment.setStatus(EscrowPaymentStatus.REFUNDED);
         payment.setMessage(reason != null ? reason : "Payment refunded by system.");
         payment.setUpdatedAt(LocalDateTime.now());
-        payment.setVersion(payment.getVersion() + 1);
         escrowPaymentRepository.save(payment);
         saveAuditLog(payment, "PAYMENT_REFUNDED", null, reason, null);
 
@@ -395,7 +467,6 @@ public class PaymentService {
             payment.setMessage("Partial settlement. Worker: KES " + workerAmount
                     + " (fee: KES " + fee + "), Client refund: KES " + clientRefund);
             payment.setUpdatedAt(LocalDateTime.now());
-            payment.setVersion(payment.getVersion() + 1);
             
             // ATOMIC: Update payment first
             escrowPaymentRepository.save(payment);
@@ -592,11 +663,17 @@ public class PaymentService {
             
         } else if (resultCode == 0) {
             // ✓ SUCCESSFUL PAYMENT - Payment received and validated by M-Pesa
-            payment.setStatus(EscrowPaymentStatus.SUCCESS);
-            payment.setMessage("✓ Payment successfully captured and held in escrow. Awaiting work completion and client approval to release.");
+            double capturedAmount = amount != null && amount > 0 ? amount : (payment.getAmount() != null ? payment.getAmount() : 0.0);
+            double fee = calculatePlatformFee(capturedAmount);
+            payment.setStatus(EscrowPaymentStatus.ESCROWED);
+            payment.setPlatformFee(fee);
+            payment.setWorkerAmount(capturedAmount - fee);
+            payment.setMessage("Payment received and held in escrow (KES " + String.format("%.2f", capturedAmount)
+                    + "). Platform fee recorded: KES " + String.format("%.2f", fee)
+                    + ". Funds release after client approves completed work.");
             payment.setFailureReason(null);
-            LOGGER.info("✓✓✓ PAYMENT SUCCESS for CheckoutRequestID={}, Receipt={}, Amount={}. Status->SUCCESS", 
-                checkoutRequestId, receiptNumber, amount);
+            LOGGER.info("✓✓✓ PAYMENT ESCROWED for CheckoutRequestID={}, Receipt={}, Amount={}, Fee={}",
+                checkoutRequestId, receiptNumber, capturedAmount, fee);
 
             // Update job status when payment is captured in escrow
             JobRequest job = payment.getJobRequest();
@@ -666,7 +743,6 @@ public class PaymentService {
         }
         
         payment.setUpdatedAt(LocalDateTime.now());
-        payment.setVersion(payment.getVersion() + 1);
 
         // ATOMIC: Update payment and log in same transaction
         EscrowPayment savedPayment = escrowPaymentRepository.save(payment);

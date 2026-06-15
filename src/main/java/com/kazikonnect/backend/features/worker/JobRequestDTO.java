@@ -30,15 +30,25 @@ public record JobRequestDTO(
     String adminDecisionReason,
     String adminEvidenceNotes,
     Double workerPartialAmount,
-    Double clientPartialAmount
+    Double clientPartialAmount,
+    String paymentStatus,
+    Double paymentAmount,
+    Double platformFee,
+    Double workerNetAmount,
+    String escrowMessage,
+    String mpesaReceiptNumber
 ) {
     public static JobRequestDTO from(JobRequest j) {
+        return from(j, null);
+    }
+
+    public static JobRequestDTO from(JobRequest j, com.kazikonnect.backend.features.payment.EscrowPayment payment) {
         return new JobRequestDTO(
             j.getId(),
             j.getClient() != null ? j.getClient().getId() : null,
-            j.getClient() != null ? j.getClient().getUsername() : null,
+            j.getClient() != null ? j.getClient().getFullName() : null,
             j.getWorker() != null ? j.getWorker().getId() : null,
-            j.getWorker() != null ? j.getWorker().getFullName() : null,
+            j.getWorker() != null ? safeWorkerName(j.getWorker()) : null,
             j.getDescription(),
             j.getStatus().name(),
             j.getCreatedAt(),
@@ -60,8 +70,24 @@ public record JobRequestDTO(
             j.getAdminDecisionReason(),
             j.getAdminEvidenceNotes(),
             j.getWorkerPartialAmount(),
-            j.getClientPartialAmount()
+            j.getClientPartialAmount(),
+            payment != null ? payment.getStatus().name() : null,
+            payment != null ? payment.getAmount() : null,
+            payment != null ? payment.getPlatformFee() : null,
+            payment != null ? payment.getWorkerAmount() : null,
+            payment != null ? payment.getMessage() : null,
+            payment != null ? payment.getMpesaReceiptNumber() : null
         );
+    }
+
+    private static String safeWorkerName(WorkerProfile worker) {
+        if (worker.getFullName() != null && !worker.getFullName().isBlank()) {
+            return worker.getFullName();
+        }
+        if (worker.getUser() != null) {
+            return worker.getUser().getFullName();
+        }
+        return "Worker";
     }
 }
 
