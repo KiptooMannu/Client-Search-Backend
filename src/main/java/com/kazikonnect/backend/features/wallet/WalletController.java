@@ -104,6 +104,33 @@ public class WalletController {
 
     public record WalletWithdrawRequest(double amount, String destinationPhoneNumber) {}
 
+    public record AdminCreditRequest(String userId, double amount, String reason, String jobId) {}
+
+    @PostMapping("/admin/credit")
+    @PreAuthorize("hasAuthority('Admin')")
+    @org.springframework.transaction.annotation.Transactional
+    public ResponseEntity<?> adminCredit(@RequestBody AdminCreditRequest request, Principal principal) {
+        if (request == null || request.amount() <= 0) {
+            throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "Amount must be greater than zero.");
+        }
+
+        java.util.UUID userUuid;
+        try {
+            userUuid = java.util.UUID.fromString(request.userId());
+        } catch (Exception e) {
+            throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "Invalid userId format.");
+        }
+
+        User user = userRepository.findById(userUuid).orElseThrow(() ->
+                new ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, "User not found"));
+
+        // Credit the wallet and create transaction
+        walletService.creditWallet(user, request.amount(), "Admin credit: " + (request.reason() == null ? "manual reconciliation" : request.reason()));
+
+        double balance = walletService.getBalance(user);
+        return ResponseEntity.ok(java.util.Map.of("message", "Wallet credited", "balance", balance));
+    }
+
     public record WalletTransactionDTO(
             String id,
             String txnType,

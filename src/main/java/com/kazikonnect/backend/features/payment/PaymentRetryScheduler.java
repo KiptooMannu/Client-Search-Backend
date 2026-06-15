@@ -22,6 +22,7 @@ public class PaymentRetryScheduler {
 
     private final EscrowPaymentRepository escrowPaymentRepository;
     private final B2cPayoutService b2cPayoutService;
+    private final PaymentService paymentService;
     private final WithdrawalRequestRepository withdrawalRequestRepository;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(PaymentRetryScheduler.class);
@@ -153,10 +154,16 @@ public class PaymentRetryScheduler {
                     LOGGER.info("Auto-refunding expired PENDING payment for job {}", 
                         payment.getJobRequest().getId());
 
-                    payment.setStatus(EscrowPaymentStatus.REFUNDED);
-                    payment.setMessage("Payment auto-refunded after timeout.");
-                    payment.setUpdatedAt(LocalDateTime.now());
-                    escrowPaymentRepository.save(payment);
+                    // Safety check: if we have evidence the payment actually completed
+                    // (receipt number or transaction date), skip auto-refund and log for manual review.
+                    if (payment.getMpesaReceiptNumber() != null || payment.getTransactionDate() != null) {
+                        LOGGER.warn("Skipping auto-refund for job {}: payment shows mpesaReceipt/transactionDate present (possible late callback). Needs manual review.",
+                                payment.getJobRequest().getId());
+                        continue;
+                    }
+
+                    // Use the central refund path which also credits the client's wallet and writes audit logs
+                    paymentService.refundEscrowBySystem(payment.getJobRequest().getId(), "Payment auto-refunded after timeout.");
 
                 } catch (Exception e) {
                     LOGGER.error("Failed to auto-refund expired payment {}: {}", 
