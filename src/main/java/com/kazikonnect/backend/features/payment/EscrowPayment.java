@@ -99,6 +99,9 @@ public class EscrowPayment {
 
     @PostLoad
     protected void onLoad() {
+        if (version == null) {
+            version = 0L;
+        }
         previousStatus = status;
     }
 

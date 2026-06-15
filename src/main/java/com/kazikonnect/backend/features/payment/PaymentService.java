@@ -320,9 +320,10 @@ public class PaymentService {
         JobRequest job = jobRequestRepository.findById(jobId)
                 .orElseThrow(() -> new RuntimeException("Job not found."));
 
-        if (actor.getRole() == com.kazikonnect.backend.features.auth.UserRole.CLIENT
-                && !job.getClient().getId().equals(actor.getId())) {
-            throw new RuntimeException("Forbidden: you are not permitted to approve this payment.");
+        if (actor.getRole() == com.kazikonnect.backend.features.auth.UserRole.CLIENT) {
+            if (job.getClient() == null || !job.getClient().getId().equals(actor.getId())) {
+                throw new RuntimeException("Forbidden: you are not permitted to approve this payment.");
+            }
         }
 
         EscrowPayment payment = escrowPaymentRepository.findTopByJobRequestIdAndStatusInOrderByCreatedAtDesc(jobId,
@@ -364,7 +365,11 @@ public class PaymentService {
         walletService.creditWallet(job.getWorker().getUser(), workerNet,
                 "Payment release for job " + jobId);
 
-        saveAuditLog(payment, "PAYMENT_RELEASED", principal, "Payment released to worker", null);
+        try {
+            saveAuditLog(payment, "PAYMENT_RELEASED", principal, "Payment released to worker", null);
+        } catch (Exception auditEx) {
+            LOGGER.warn("Payment released for job {} but audit log failed: {}", jobId, auditEx.getMessage());
+        }
     }
 
     @Transactional

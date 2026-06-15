@@ -124,7 +124,6 @@ public class JobRequestController {
     // UPDATE: Update job status (e.g. ACCEPTED, REJECTED, COMPLETED, CANCELLED)
     @PutMapping("/{jobId}/status")
     @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
-    @Transactional
     public ResponseEntity<?> updateJobStatus(@PathVariable UUID jobId, @RequestParam JobStatus status,
             Principal principal) {
         return jobRequestRepository.findById(jobId).map(job -> {
@@ -154,8 +153,8 @@ public class JobRequestController {
 
                 try {
                     paymentService.releaseEscrow(jobId, principal);
-                } catch (RuntimeException e) {
-                    log.warn("Work approval failed for job {}: {}", jobId, e.getMessage());
+                } catch (Exception e) {
+                    log.warn("Work approval failed for job {}: {}", jobId, e.getMessage(), e);
                     return ResponseEntity.badRequest().body(
                             "Cannot approve work: " + (e.getMessage() != null ? e.getMessage() : "Payment is not ready for release."));
                 }
@@ -164,28 +163,35 @@ public class JobRequestController {
 
                 if (oldStatus != JobStatus.APPROVED) {
                     try {
-                        String clientName = updatedJob.getClient() != null ? updatedJob.getClient().getFullName() : "Client";
-                        String workerName = updatedJob.getWorker() != null ? safeWorkerName(updatedJob.getWorker()) : "Worker";
+                        if (updatedJob.getWorker() != null && updatedJob.getWorker().getUser() != null) {
+                            String clientName = updatedJob.getClient() != null ? updatedJob.getClient().getFullName() : "Client";
+                            String workerName = safeWorkerName(updatedJob.getWorker());
 
-                        notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
-                                .user(updatedJob.getWorker().getUser())
-                                .title("Work Approved & Payment Released!")
-                                .message(clientName + " has approved your work. Payment is now available in your wallet.")
-                                .type("SUCCESS")
-                                .build());
+                            notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                                    .user(updatedJob.getWorker().getUser())
+                                    .title("Work Approved & Payment Released!")
+                                    .message(clientName + " has approved your work. Payment is now available in your wallet.")
+                                    .type("SUCCESS")
+                                    .build());
 
-                        messageRepository.save(com.kazikonnect.backend.features.common.Message.builder()
-                                .sender(actor)
-                                .receiver(updatedJob.getWorker().getUser())
-                                .content("Hi " + workerName + ", I've approved the work. Great job!")
-                                .isRead(false)
-                                .build());
+                            messageRepository.save(com.kazikonnect.backend.features.common.Message.builder()
+                                    .sender(actor)
+                                    .receiver(updatedJob.getWorker().getUser())
+                                    .content("Hi " + workerName + ", I've approved the work. Great job!")
+                                    .isRead(false)
+                                    .build());
+                        }
                     } catch (Exception notifyEx) {
                         log.warn("Approval succeeded for job {} but notification delivery failed: {}", jobId, notifyEx.getMessage());
                     }
                 }
 
-                return ResponseEntity.ok(toDtoWithPayment(updatedJob));
+                try {
+                    return ResponseEntity.ok(toDtoWithPayment(updatedJob));
+                } catch (Exception dtoEx) {
+                    log.warn("Approval succeeded for job {} but response mapping failed: {}", jobId, dtoEx.getMessage());
+                    return ResponseEntity.ok(JobRequestDTO.from(updatedJob));
+                }
             }
 
             job.setStatus(targetStatus);

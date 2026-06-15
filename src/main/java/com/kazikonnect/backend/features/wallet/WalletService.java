@@ -26,8 +26,10 @@ public class WalletService {
             return;
         }
         Wallet wallet = getOrCreateWallet(user);
-        wallet.setBalance(wallet.getBalance() + amount);
-        wallet.setTotalEarned(wallet.getTotalEarned() + amount);
+        double currentBalance = wallet.getBalance() != null ? wallet.getBalance() : 0.0;
+        double currentEarned = wallet.getTotalEarned() != null ? wallet.getTotalEarned() : 0.0;
+        wallet.setBalance(currentBalance + amount);
+        wallet.setTotalEarned(currentEarned + amount);
         walletRepository.save(wallet);
         saveWalletTransaction(user, WalletTransactionType.CREDIT, amount, wallet.getBalance(), null, reason);
     }
@@ -38,11 +40,13 @@ public class WalletService {
             throw new RuntimeException("Withdrawal amount must be greater than zero.");
         }
         Wallet wallet = getOrCreateWallet(user);
-        if (wallet.getBalance() < amount) {
+        double currentBalance = wallet.getBalance() != null ? wallet.getBalance() : 0.0;
+        if (currentBalance < amount) {
             throw new RuntimeException("Insufficient wallet balance for withdrawal.");
         }
-        wallet.setBalance(wallet.getBalance() - amount);
-        wallet.setTotalWithdrawn(wallet.getTotalWithdrawn() + amount);
+        double currentWithdrawn = wallet.getTotalWithdrawn() != null ? wallet.getTotalWithdrawn() : 0.0;
+        wallet.setBalance(currentBalance - amount);
+        wallet.setTotalWithdrawn(currentWithdrawn + amount);
         walletRepository.save(wallet);
         saveWalletTransaction(user, WalletTransactionType.DEBIT, amount, wallet.getBalance(), referenceId, description);
     }

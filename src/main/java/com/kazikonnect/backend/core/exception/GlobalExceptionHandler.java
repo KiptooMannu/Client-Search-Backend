@@ -73,14 +73,41 @@ public class GlobalExceptionHandler {
 
     /**
      * Handles RuntimeException - general errors.
+     * Business/runtime failures with a message are surfaced to the client.
      */
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<?> handleRuntimeException(RuntimeException ex) {
         log.error("Unhandled runtime exception caught by global handler", ex);
+        String message = ex.getMessage();
+        if (message != null && !message.isBlank()
+                && !(ex instanceof org.springframework.transaction.UnexpectedRollbackException)) {
+            return buildErrorResponse(HttpStatus.BAD_REQUEST, "Error", message);
+        }
         return buildErrorResponse(
             HttpStatus.INTERNAL_SERVER_ERROR,
             "Error",
             "An unexpected error occurred. Please try again later."
+        );
+    }
+
+    @ExceptionHandler(org.springframework.transaction.UnexpectedRollbackException.class)
+    public ResponseEntity<?> handleUnexpectedRollback(org.springframework.transaction.UnexpectedRollbackException ex) {
+        log.error("Transaction rolled back unexpectedly", ex);
+        return buildErrorResponse(
+            HttpStatus.CONFLICT,
+            "Transaction Error",
+            "The operation could not be completed. Please refresh and try again."
+        );
+    }
+
+    @ExceptionHandler(org.springframework.orm.jpa.JpaOptimisticLockingFailureException.class)
+    public ResponseEntity<?> handleOptimisticLocking(
+            org.springframework.orm.jpa.JpaOptimisticLockingFailureException ex) {
+        log.warn("Optimistic locking failure", ex);
+        return buildErrorResponse(
+            HttpStatus.CONFLICT,
+            "Conflict",
+            "This payment was updated by another request. Please refresh and try again."
         );
     }
 

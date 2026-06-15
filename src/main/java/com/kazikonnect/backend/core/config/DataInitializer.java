@@ -67,6 +67,7 @@ public class DataInitializer implements CommandLineRunner {
         }
 
         syncEscrowPaymentStatusConstraint();
+        backfillEscrowPaymentVersions();
 
         if (shouldSeed) {
             log.info("--- Starting Database Seeding ---");
@@ -559,6 +560,18 @@ public class DataInitializer implements CommandLineRunner {
         for (int i = 1; i <= 40; i++) {
             createClient("client_user_" + i, "client" + i + "@kazikonnect.com", "Client " + i,
                     "Client Profile " + i, "07" + String.format("%08d", 2000 + i));
+        }
+    }
+
+    private void backfillEscrowPaymentVersions() {
+        try {
+            int updated = jdbcTemplate.update(
+                    "UPDATE escrow_payments SET version = 0 WHERE version IS NULL");
+            if (updated > 0) {
+                log.info("Backfilled null escrow payment versions for {} row(s).", updated);
+            }
+        } catch (Exception e) {
+            log.warn("Could not backfill escrow payment versions: {}", e.getMessage());
         }
     }
 
