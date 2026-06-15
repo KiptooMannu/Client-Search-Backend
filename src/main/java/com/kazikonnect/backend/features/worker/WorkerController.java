@@ -62,8 +62,7 @@ public class WorkerController {
             profileToSave.setCategory(updates.category());
             profileToSave.setProfilePictureUrl(updates.profilePictureUrl());
             profileToSave.setAvailabilityDetails(updates.availabilityDetails());
-            
-            // Removed default placeholder document seeding to allow for real worker uploads
+          
         }
 
         // Handle Skills
