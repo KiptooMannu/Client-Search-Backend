@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,7 +23,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import org.springframework.dao.DataIntegrityViolationException;
 
 @Service
 @RequiredArgsConstructor
@@ -66,7 +66,7 @@ public class PaymentService {
             throw new RuntimeException("Invalid phone number or M-Pesa not enabled for this carrier.");
         }
 
-        // FIX: Check for existing payment and handle it properly
+        // Check for existing payment and handle it properly
         Optional<EscrowPayment> existingPaymentOpt = escrowPaymentRepository
                 .findTopByJobRequestIdOrderByCreatedAtDesc(jobId);
         
@@ -77,11 +77,7 @@ public class PaymentService {
             EscrowPayment existingPayment = existingPaymentOpt.get();
             EscrowPaymentStatus status = existingPayment.getStatus();
             
-            // ALLOW RETRY for FAILED payments
-            // Also treat a PENDING payment whose STK push timed out as retryable
-            // (user enters no PIN → M-Pesa callback sets FAILED, but if that callback
-            //  was rejected by IP check the row stays PENDING until our scheduler runs.
-            //  We let the client retry immediately instead of waiting for the scheduler.)
+            // ALLOW RETRY for FAILED, REFUNDED, or timed out PENDING payments
             boolean timedOut = status == EscrowPaymentStatus.PENDING
                     && existingPayment.getTimeoutAt() != null
                     && existingPayment.getTimeoutAt().isBefore(LocalDateTime.now());
@@ -106,7 +102,7 @@ public class PaymentService {
                     throw new RuntimeException("Failed to obtain MPESA checkout request id for job " + jobId);
                 }
                 
-                // UPDATE existing record instead of creating new one — prevents duplicate key constraint violation
+                // UPDATE existing record instead of creating new one
                 existingPayment.setStatus(EscrowPaymentStatus.PENDING);
                 existingPayment.setPhoneNumber(normalizedPhone);
                 existingPayment.setCheckoutRequestId(pushResponse.checkoutRequestId());
@@ -118,6 +114,7 @@ public class PaymentService {
                 existingPayment.setMpesaReceiptNumber(null);
                 existingPayment.setTransactionDate(null);
                 existingPayment.setAmount(amount);
+                existingPayment.setVersion(existingPayment.getVersion() + 1); // Increment version for optimistic locking
                 
                 EscrowPayment savedPayment = escrowPaymentRepository.save(existingPayment);
                 saveAuditLog(savedPayment, "STK_PUSH_RETRY", principal, 
@@ -132,12 +129,12 @@ public class PaymentService {
             if (status == EscrowPaymentStatus.ESCROWED || status == EscrowPaymentStatus.SUCCESS) {
                 throw new RuntimeException("Payment already captured for this job. Approve the work to release funds.");
             }
-            if (status == EscrowPaymentStatus.PENDING) {
+            if (status == EscrowPaymentStatus.PENDING && !timedOut) {
                 // Active, non-expired pending — STK push still in-flight
                 throw new RuntimeException("An STK push is already in progress for this job. Please check your phone.");
             }
             
-            // RELEASED, REFUNDED, etc. — log and reject
+            // RELEASED, PARTIALLY_SETTLED, etc. — log and reject
             LOGGER.warn("Cannot initiate payment for job {} with status: {}", jobId, status);
             throw new RuntimeException("Cannot initiate payment. Current payment status: " + status);
         }
@@ -164,6 +161,7 @@ public class PaymentService {
                 .idempotencyKey(pushResponse.checkoutRequestId())
                 .message("STK push sent")
                 .timeoutAt(LocalDateTime.now().plusMinutes(15))
+                .version(0L)
                 .build();
 
         EscrowPayment savedPayment = escrowPaymentRepository.save(payment);
@@ -267,6 +265,7 @@ public class PaymentService {
         payment.setStatus(EscrowPaymentStatus.RELEASED);
         payment.setMessage("Payment released to worker. Platform fee: KES " + fee);
         payment.setUpdatedAt(LocalDateTime.now());
+        payment.setVersion(payment.getVersion() + 1);
 
         // ATOMIC: Update payment and credit wallet in same transaction
         escrowPaymentRepository.save(payment);
@@ -274,6 +273,10 @@ public class PaymentService {
         if (job.getWorker() == null || job.getWorker().getUser() == null) {
             throw new RuntimeException("Worker account not found for this job.");
         }
+
+        // Update job status to IN_PROGRESS when payment is released
+        job.setStatus(JobStatus.IN_PROGRESS);
+        jobRequestRepository.save(job);
 
         // This credit happens atomically within the same transaction
         walletService.creditWallet(job.getWorker().getUser(), payment.getWorkerAmount(),
@@ -307,9 +310,14 @@ public class PaymentService {
         payment.setStatus(EscrowPaymentStatus.REFUNDED);
         payment.setMessage("Payment refunded to payer.");
         payment.setUpdatedAt(LocalDateTime.now());
+        payment.setVersion(payment.getVersion() + 1);
 
         // ATOMIC: Update payment and credit wallet in same transaction
         escrowPaymentRepository.save(payment);
+        
+        // Update job status to CANCELLED (payment was refunded, job won't proceed)
+        job.setStatus(JobStatus.CANCELLED);
+        jobRequestRepository.save(job);
         
         // Credit client's wallet with refund amount
         if (job.getClient() != null && payment.getAmount() > 0) {
@@ -332,8 +340,16 @@ public class PaymentService {
         payment.setStatus(EscrowPaymentStatus.REFUNDED);
         payment.setMessage(reason != null ? reason : "Payment refunded by system.");
         payment.setUpdatedAt(LocalDateTime.now());
+        payment.setVersion(payment.getVersion() + 1);
         escrowPaymentRepository.save(payment);
         saveAuditLog(payment, "PAYMENT_REFUNDED", null, reason, null);
+
+        // Update job status
+        JobRequest job = payment.getJobRequest();
+        if (job != null) {
+            job.setStatus(JobStatus.CANCELLED);
+            jobRequestRepository.save(job);
+        }
 
         // Credit client's wallet
         if (payment.getJobRequest() != null && payment.getJobRequest().getClient() != null && payment.getAmount() > 0) {
@@ -371,6 +387,7 @@ public class PaymentService {
             payment.setMessage("Partial settlement. Worker: KES " + workerAmount
                     + " (fee: KES " + fee + "), Client refund: KES " + clientRefund);
             payment.setUpdatedAt(LocalDateTime.now());
+            payment.setVersion(payment.getVersion() + 1);
             
             // ATOMIC: Update payment first
             escrowPaymentRepository.save(payment);
@@ -379,6 +396,10 @@ public class PaymentService {
         } else {
             LOGGER.warn("partialRefundEscrow: no capturable payment for job {}; crediting wallets directly.", jobId);
         }
+
+        // Update job status to COMPLETED (partial settlement finalized)
+        job.setStatus(JobStatus.COMPLETED);
+        jobRequestRepository.save(job);
 
         // ATOMIC: Credit both wallets within same transaction
         // Credit worker wallet (net of platform fee)
@@ -401,9 +422,8 @@ public class PaymentService {
         }
         return switch (resultCode) {
             case 1032 -> "USER_CANCELLED";
-            case 1031 -> "TIMEOUT";
-            case 1001 -> "TIMEOUT";
-            case 1, 1037 -> "INSUFFICIENT_FUNDS_OR_WRONG_PIN";
+            case 1031, 1001 -> "TIMEOUT";
+            case 1, 1037 -> "INSUFFICIENT_FUNDS";
             case 1034 -> "WRONG_PIN";
             case 1030 -> "REQUEST_CANCELLED";
             case 2001 -> "NETWORK_FAILURE";
@@ -413,14 +433,14 @@ public class PaymentService {
 
     private String mapFailureMessage(Integer resultCode, String resultDesc) {
         if (resultCode == null) {
-            if (resultDesc != null && resultDesc.toLowerCase().contains("pin")) return "Incorrect M-Pesa PIN. Please try again.";
+            if (resultDesc != null && resultDesc.toLowerCase().contains("pin")) 
+                return "Incorrect M-Pesa PIN. Please try again.";
             return resultDesc != null && !resultDesc.isBlank() ? resultDesc : "Payment failed. Please try again.";
         }
         return switch (resultCode) {
             case 1032 -> "Payment cancelled by user.";
-            case 1031 -> "Payment request timed out. Please try again.";
-            case 1001 -> "Payment request timed out. Please try again.";
-            case 1, 1037 -> "Insufficient funds in your M-Pesa account or incorrect PIN. Please check and try again.";
+            case 1031, 1001 -> "Payment request timed out. Please try again.";
+            case 1, 1037 -> "Insufficient funds in your M-Pesa account. Please check your balance and try again.";
             case 1034 -> "Incorrect M-Pesa PIN. Please try again.";
             case 1030 -> "STK request cancelled.";
             case 2001 -> "Unable to communicate with M-Pesa. Please try again.";
@@ -430,6 +450,10 @@ public class PaymentService {
 
     @Transactional
     public void handleMpesaCallback(MpesaCallbackRequest callbackRequest, String remoteIp) {
+        // Log full callback for debugging
+        LOGGER.info("Received MPESA callback from IP: {}", remoteIp);
+        LOGGER.debug("Full callback payload: {}", callbackRequest);
+        
         if (callbackRequest == null || callbackRequest.body() == null || callbackRequest.body().stkCallback() == null) {
             LOGGER.warn("Received empty or invalid MPESA callback payload from {}", remoteIp);
             return;
@@ -440,6 +464,9 @@ public class PaymentService {
         String checkoutRequestId = safeString(stkCallback.checkoutRequestId());
         String resultDesc = safeString(stkCallback.resultDesc());
 
+        LOGGER.info("MPESA callback - CheckoutRequestID: {}, ResultCode: {}, ResultDesc: {}", 
+            checkoutRequestId, resultCode, resultDesc);
+
         if (checkoutRequestId == null || checkoutRequestId.isBlank()) {
             LOGGER.warn("MPESA callback missing CheckoutRequestID from {}", remoteIp);
             return;
@@ -448,7 +475,15 @@ public class PaymentService {
         String callbackKey = buildCallbackIdempotencyKey(checkoutRequestId);
 
         if (!mpesaService.isAcceptedCallbackSource(remoteIp)) {
-            LOGGER.warn("Rejected MPESA callback from unauthorized source {} for CheckoutRequestID={}", remoteIp, checkoutRequestId);
+            LOGGER.error("SECURITY: Rejected MPESA callback from unauthorized source {} for CheckoutRequestID={}. " +
+                "This payment will be auto-refunded if not corrected. Verify MPESA_CALLBACK_ALLOWED_IPS config.", 
+                remoteIp, checkoutRequestId);
+            // CRITICAL: Log rejected callback for manual review
+            webhookProcessedLogRepository.save(WebhookProcessedLog.builder()
+                    .id("REJECTED_" + callbackKey)
+                    .checkoutRequestId(checkoutRequestId)
+                    .payload("REJECTED from IP: " + remoteIp + " - " + resultCode + ": " + resultDesc)
+                    .build());
             return;
         }
 
@@ -488,16 +523,20 @@ public class PaymentService {
                     default -> {}
                 }
             }
+            LOGGER.info("Parsed metadata - Receipt: {}, Amount: {}, Phone: {}, Date: {}", 
+                receiptNumber, amount, phoneNumber, transactionDate);
         } else {
             LOGGER.warn("MPESA callback metadata missing or empty for CheckoutRequestID={}", checkoutRequestId);
         }
 
-        // Validate required fields
-        if (amount == null || amount <= 0) {
-            LOGGER.error("Invalid amount in MPESA callback for CheckoutRequestID={}", checkoutRequestId);
-        }
-        if (receiptNumber == null || receiptNumber.isBlank()) {
-            LOGGER.warn("Missing receipt number in MPESA callback for CheckoutRequestID={}", checkoutRequestId);
+        // Validate required fields for successful transactions
+        if (resultCode != null && resultCode == 0) {
+            if (amount == null || amount <= 0) {
+                LOGGER.error("Invalid amount in MPESA callback for CheckoutRequestID={}", checkoutRequestId);
+            }
+            if (receiptNumber == null || receiptNumber.isBlank()) {
+                LOGGER.warn("Missing receipt number in MPESA callback for CheckoutRequestID={}", checkoutRequestId);
+            }
         }
 
         if (payment == null) {
@@ -514,7 +553,8 @@ public class PaymentService {
 
         // Skip processing if already in terminal state
         if (payment.getStatus() == EscrowPaymentStatus.RELEASED
-                || payment.getStatus() == EscrowPaymentStatus.REFUNDED) {
+                || payment.getStatus() == EscrowPaymentStatus.REFUNDED
+                || payment.getStatus() == EscrowPaymentStatus.PARTIALLY_SETTLED) {
             LOGGER.info("MPESA callback ignored because payment is already terminal for CheckoutRequestID={}", checkoutRequestId);
             webhookProcessedLogRepository.save(WebhookProcessedLog.builder()
                     .id(callbackKey)
@@ -527,36 +567,105 @@ public class PaymentService {
         }
 
         // Update payment with M-Pesa data
-        payment.setPhoneNumber(phoneNumber != null ? phoneNumber : payment.getPhoneNumber());
-        payment.setMpesaReceiptNumber(receiptNumber);
-        payment.setAmount(amount != null ? amount : payment.getAmount());
-        payment.setTransactionDate(transactionDate);
+        if (phoneNumber != null) payment.setPhoneNumber(phoneNumber);
+        if (receiptNumber != null) payment.setMpesaReceiptNumber(receiptNumber);
+        if (amount != null && amount > 0) payment.setAmount(amount);
+        if (transactionDate != null) payment.setTransactionDate(transactionDate);
 
-        boolean success = resultCode != null && resultCode == 0;
-        if (success) {
+        // Handle different result codes appropriately
+        if (resultCode == null) {
+            // No response from M-Pesa
+            payment.setStatus(EscrowPaymentStatus.FAILED);
+            payment.setFailureReason("NO_RESPONSE_FROM_MPESA");
+            payment.setMessage("No response received from M-Pesa. Please try again.");
+            LOGGER.error("MPESA callback with null resultCode for CheckoutRequestID={}", checkoutRequestId);
+            
+        } else if (resultCode == 0) {
+            // ✓ SUCCESSFUL PAYMENT - Payment received and validated by M-Pesa
             payment.setStatus(EscrowPaymentStatus.SUCCESS);
-            payment.setMessage("Payment captured successfully.");
+            payment.setMessage("✓ Payment successfully captured and held in escrow. Awaiting work completion and client approval to release.");
             payment.setFailureReason(null);
+            LOGGER.info("✓✓✓ PAYMENT SUCCESS for CheckoutRequestID={}, Receipt={}, Amount={}. Status->SUCCESS", 
+                checkoutRequestId, receiptNumber, amount);
 
-            // IMPROVED: Only transition job to IN_PROGRESS if explicitly approved by client
-            // Don't auto-transition - require manual release via releaseEscrow()
+            // Update job status to indicate payment was received
             JobRequest job = payment.getJobRequest();
-            if (job != null && job.getStatus() == JobStatus.PENDING) {
-                // Keep job in PENDING - client must approve payment before work starts
-                LOGGER.info("Payment captured for job {} but job remains in PENDING until client releases payment", job.getId());
+            if (job != null) {
+                if (job.getStatus() == JobStatus.PENDING) {
+                    job.setStatus(JobStatus.ASSIGNED);
+                    jobRequestRepository.save(job);
+                    LOGGER.info("✓ Job {} status: PENDING -> ASSIGNED (payment captured in escrow)", job.getId());
+                } else {
+                    LOGGER.info("ℹ Job {} already has status {}, not transitioning", job.getId(), job.getStatus());
+                }
+            } else {
+                LOGGER.warn("⚠ No job associated with payment for CheckoutRequestID={}", checkoutRequestId);
             }
+            
+        } else if (resultCode == 1032) {
+            // ✗ USER CANCELLED the transaction
+            payment.setStatus(EscrowPaymentStatus.FAILED);
+            payment.setFailureReason("USER_CANCELLED");
+            payment.setMessage("✗ Payment cancelled by you. Please retry if needed.");
+            LOGGER.warn("✗ PAYMENT CANCELLED by user for CheckoutRequestID={}", checkoutRequestId);
+            
+        } else if (resultCode == 1037 || resultCode == 1) {
+            // ✗ INSUFFICIENT FUNDS
+            payment.setStatus(EscrowPaymentStatus.FAILED);
+            payment.setFailureReason("INSUFFICIENT_FUNDS");
+            payment.setMessage("✗ Insufficient M-Pesa balance. Please top up your account and retry.");
+            LOGGER.warn("✗ PAYMENT FAILED - Insufficient funds (code {}) for CheckoutRequestID={}", resultCode, checkoutRequestId);
+            
+        } else if (resultCode == 1031 || resultCode == 1001) {
+            // ✗ TIMEOUT - User didn't enter PIN in time
+            payment.setStatus(EscrowPaymentStatus.FAILED);
+            payment.setFailureReason("TIMEOUT");
+            payment.setMessage("✗ Payment request timed out. Please try again.");
+            LOGGER.warn("✗ PAYMENT FAILED - Timeout for CheckoutRequestID={}", checkoutRequestId);
+            
+        } else if (resultCode == 1034) {
+            // ✗ WRONG PIN
+            payment.setStatus(EscrowPaymentStatus.FAILED);
+            payment.setFailureReason("WRONG_PIN");
+            payment.setMessage("✗ Incorrect M-Pesa PIN. Please try again.");
+            LOGGER.warn("✗ PAYMENT FAILED - Wrong PIN for CheckoutRequestID={}", checkoutRequestId);
+            
+        } else if (resultCode == 1030) {
+            // ✗ REQUEST CANCELLED
+            payment.setStatus(EscrowPaymentStatus.FAILED);
+            payment.setFailureReason("REQUEST_CANCELLED");
+            payment.setMessage("✗ Payment request was cancelled. Please retry.");
+            LOGGER.warn("✗ PAYMENT CANCELLED for CheckoutRequestID={}", checkoutRequestId);
+            
+        } else if (resultCode == 2001) {
+            // ✗ NETWORK FAILURE
+            payment.setStatus(EscrowPaymentStatus.FAILED);
+            payment.setFailureReason("NETWORK_FAILURE");
+            payment.setMessage("✗ Network failure connecting to M-Pesa. Please try again later.");
+            LOGGER.error("✗ PAYMENT FAILED - Network failure for CheckoutRequestID={}", checkoutRequestId);
+            
         } else {
+            // ✗ OTHER UNKNOWN ERROR
             payment.setStatus(EscrowPaymentStatus.FAILED);
             payment.setFailureReason(mapFailureReason(resultCode, resultDesc));
             payment.setMessage(mapFailureMessage(resultCode, resultDesc));
+            LOGGER.error("✗ PAYMENT FAILED - Unknown error code {} ({}) for CheckoutRequestID={}", 
+                resultCode, resultDesc, checkoutRequestId);
         }
+        
         payment.setUpdatedAt(LocalDateTime.now());
+        payment.setVersion(payment.getVersion() + 1);
 
         // ATOMIC: Update payment and log in same transaction
-        escrowPaymentRepository.save(payment);
-        saveAuditLog(payment, "MPESA_CALLBACK", null,
-                success ? "Payment captured successfully" : payment.getFailureReason(),
-                String.valueOf(callbackRequest));
+        EscrowPayment savedPayment = escrowPaymentRepository.save(payment);
+        saveAuditLog(savedPayment, "MPESA_CALLBACK", null,
+                resultCode != null && resultCode == 0 ? "Payment captured successfully" : 
+                (resultCode == 1032 ? "User cancelled payment" :
+                 (resultCode == 1037 || resultCode == 1 ? "Insufficient funds" :
+                  (resultCode == 1031 || resultCode == 1001 ? "Payment timeout" :
+                   (resultCode == 1034 ? "Wrong PIN" : payment.getFailureReason())))),
+                String.format("resultCode=%d, resultDesc=%s, receiptNumber=%s", 
+                    resultCode, resultDesc, receiptNumber));
 
         webhookProcessedLogRepository.save(WebhookProcessedLog.builder()
                 .id(callbackKey)
@@ -566,21 +675,51 @@ public class PaymentService {
                 .payload(String.valueOf(callbackRequest))
                 .build());
 
-        LOGGER.info("MPESA callback processed for CheckoutRequestID={} with ResultCode={} and status={}", 
-            checkoutRequestId, resultCode, payment.getStatus());
+        LOGGER.info("MPESA callback processed for CheckoutRequestID={} with ResultCode={} and final status={}", 
+            checkoutRequestId, resultCode, savedPayment.getStatus());
     }
 
     @Scheduled(cron = "0 */5 * * * *")
     @Transactional
     public void refundExpiredPendingPayments() {
-        List<EscrowPayment> expiredPayments = escrowPaymentRepository.findAllByStatusAndTimeoutAtBefore(
-                EscrowPaymentStatus.PENDING, LocalDateTime.now());
-        for (EscrowPayment payment : expiredPayments) {
-            try {
-                refundEscrowBySystem(payment.getJobRequest().getId(), "Payment auto-refunded after timeout.");
-            } catch (Exception e) {
-                LOGGER.error("Failed to auto-refund expired payment record {}", payment.getId(), e);
+        try {
+            LocalDateTime now = LocalDateTime.now();
+            List<EscrowPayment> expiredPayments = escrowPaymentRepository.findAllByStatusAndTimeoutAtBefore(
+                    EscrowPaymentStatus.PENDING, now);
+            LOGGER.info("Checking {} expired PENDING payments for auto-refund", expiredPayments.size());
+            
+            for (EscrowPayment payment : expiredPayments) {
+                try {
+                    UUID jobId = payment.getJobRequest().getId();
+                    
+                    // ⚠️ CRITICAL SAFETY CHECK: If payment has transaction evidence, DO NOT auto-refund
+                    // This prevents false refunds when MPESA callback is delayed
+                    if (payment.getMpesaReceiptNumber() != null || payment.getTransactionDate() != null) {
+                        LOGGER.warn("⚠️ SAFETY: Skipping auto-refund for job {} - Payment shows transaction evidence " +
+                                "(receipt={}, date={}). Likely delayed callback. Requires manual review.",
+                                jobId, payment.getMpesaReceiptNumber(), payment.getTransactionDate());
+                        continue;
+                    }
+
+                    // Also check if amount was filled in (indicates callback was processed)
+                    if (payment.getAmount() != null && payment.getAmount() > 0 && 
+                        (payment.getFailureReason() == null || payment.getFailureReason().isBlank())) {
+                        LOGGER.warn("⚠️ SAFETY: Skipping auto-refund for job {} - Amount is set but no failure reason. " +
+                                "Likely delayed success callback. Requires manual review.", jobId);
+                        continue;
+                    }
+
+                    // Safe to refund: no evidence of successful transaction
+                    LOGGER.info("🔄 Auto-refunding PENDING payment for job {} (timeout, no evidence of transaction)", jobId);
+                    refundEscrowBySystem(jobId, "Payment auto-refunded after timeout (no callback received).");
+                    LOGGER.info("✓ Auto-refunded expired payment record {}", payment.getId());
+                    
+                } catch (Exception e) {
+                    LOGGER.error("Failed to auto-refund expired payment record {}", payment.getId(), e);
+                }
             }
+        } catch (Exception e) {
+            LOGGER.error("Error in expired payment refund scheduler: {}", e.getMessage(), e);
         }
     }
 
@@ -617,7 +756,7 @@ public class PaymentService {
     }
 
     private String buildCallbackIdempotencyKey(String checkoutRequestId) {
-        return checkoutRequestId;
+        return "MPESA_" + checkoutRequestId;
     }
 
     private String safeString(Object value) {
@@ -646,9 +785,14 @@ public class PaymentService {
             return null;
         }
         try {
+            // Handle both formats: yyyyMMddHHmmss and yyyyMMddHHmmssSSS
+            if (raw.length() >= 14) {
+                String formatted = raw.substring(0, 14);
+                return LocalDateTime.parse(formatted, DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+            }
             return LocalDateTime.parse(raw, DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
         } catch (Exception e) {
-            LOGGER.warn("Unable to parse transaction date from MPESA callback value: {}", raw);
+            LOGGER.warn("Unable to parse transaction date from MPESA callback value: {}", raw, e);
             return null;
         }
     }
@@ -665,7 +809,7 @@ public class PaymentService {
     public void processMpesaB2cResult(String transactionId, String conversationId, String resultCode, String sourceIp) {
         try {
             if (!"0".equals(resultCode)) {
-                LOGGER.warn("B2C result processing: failed with resultCode={}", resultCode);
+                LOGGER.warn("B2C result processing: failed with resultCode={} for conversationId={}", resultCode, conversationId);
                 return;
             }
 
@@ -685,8 +829,7 @@ public class PaymentService {
      * Process M-Pesa B2C transaction timeout
      * Delegates to B2cPayoutService for retry scheduling
      */
-    @Transactional
-    public void processMpesaB2cTimeout(String conversationId, String responseCode, String responseDescription, String sourceIp) {
+    @Transactional    public void processMpesaB2cTimeout(String conversationId, String responseCode, String responseDescription, String sourceIp) {
         try {
             LOGGER.error("B2C timeout processing: conversationId={}, code={}, desc={}, sourceIp={}", 
                 conversationId, responseCode, responseDescription, sourceIp);

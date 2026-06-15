@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Payment Retry Scheduler
@@ -137,6 +138,7 @@ public class PaymentRetryScheduler {
     /**
      * Refund expired pending payments
      * Automatically refund payments that are stuck in PENDING after timeout
+     * BUT: Skip if there's evidence the payment actually completed (receipt/date/status changed)
      */
     @Scheduled(fixedDelay = 300000, initialDelay = 20000)  // Check every 5 minutes
     @Transactional
@@ -144,26 +146,39 @@ public class PaymentRetryScheduler {
         try {
             LocalDateTime now = LocalDateTime.now();
             
-            // Find payments stuck in PENDING after 15 minutes
+            // Find payments stuck in PENDING after timeout threshold
             List<EscrowPayment> expiredPayments = 
                 escrowPaymentRepository.findByStatusAndTimeoutAtBefore(
                     EscrowPaymentStatus.PENDING, now);
 
+            LOGGER.info("Found {} expired PENDING payments", expiredPayments.size());
+
             for (EscrowPayment payment : expiredPayments) {
                 try {
-                    LOGGER.info("Auto-refunding expired PENDING payment for job {}", 
-                        payment.getJobRequest().getId());
-
-                    // Safety check: if we have evidence the payment actually completed
-                    // (receipt number or transaction date), skip auto-refund and log for manual review.
+                    UUID jobId = payment.getJobRequest().getId();
+                    
+                    // CRITICAL SAFETY CHECK: If payment has transaction evidence, DO NOT auto-refund
+                    // This prevents false refunds when MPESA callback is delayed
                     if (payment.getMpesaReceiptNumber() != null || payment.getTransactionDate() != null) {
-                        LOGGER.warn("Skipping auto-refund for job {}: payment shows mpesaReceipt/transactionDate present (possible late callback). Needs manual review.",
-                                payment.getJobRequest().getId());
+                        LOGGER.warn("⚠️ SAFETY: Skipping auto-refund for job {} - Payment shows transaction evidence " +
+                                "(receipt={}, date={}). Likely delayed callback. Requires manual review.",
+                                jobId, payment.getMpesaReceiptNumber(), payment.getTransactionDate());
                         continue;
                     }
 
+                    // Also check if amount was filled in (indicates callback was processed)
+                    if (payment.getAmount() != null && payment.getAmount() > 0 && 
+                        (payment.getFailureReason() == null || payment.getFailureReason().isBlank())) {
+                        LOGGER.warn("⚠️ SAFETY: Skipping auto-refund for job {} - Amount is set but no failure reason. " +
+                                "Likely delayed success callback. Requires manual review.", jobId);
+                        continue;
+                    }
+
+                    // Safe to refund: no evidence of successful transaction
+                    LOGGER.info("🔄 Auto-refunding PENDING payment for job {} (timeout, no evidence of transaction)", jobId);
+                    
                     // Use the central refund path which also credits the client's wallet and writes audit logs
-                    paymentService.refundEscrowBySystem(payment.getJobRequest().getId(), "Payment auto-refunded after timeout.");
+                    paymentService.refundEscrowBySystem(jobId, "Payment auto-refunded after timeout (no callback received).");
 
                 } catch (Exception e) {
                     LOGGER.error("Failed to auto-refund expired payment {}: {}", 
@@ -175,4 +190,5 @@ public class PaymentRetryScheduler {
             LOGGER.error("Error in expired payment refund scheduler: {}", e.getMessage(), e);
         }
     }
+
 }
