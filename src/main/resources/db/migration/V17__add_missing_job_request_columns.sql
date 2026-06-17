@@ -1,0 +1,21 @@
+-- Add missing columns to job_requests table for dispute handling, pricing, and timestamps
+ALTER TABLE job_requests
+    ADD COLUMN IF NOT EXISTS job_price NUMERIC(14, 2),
+    ADD COLUMN IF NOT EXISTS negotiated_price NUMERIC(14, 2),
+    ADD COLUMN IF NOT EXISTS started_at TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS submitted_at TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS disputed_at TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS deadline TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS dispute_reason TEXT,
+    ADD COLUMN IF NOT EXISTS dispute_evidence TEXT,
+    ADD COLUMN IF NOT EXISTS dispute_attachment_url VARCHAR(255),
+    ADD COLUMN IF NOT EXISTS dispute_response TEXT,
+    ADD COLUMN IF NOT EXISTS dispute_response_evidence TEXT,
+    ADD COLUMN IF NOT EXISTS dispute_response_attachment_url VARCHAR(255),
+    ADD COLUMN IF NOT EXISTS admin_decision_reason TEXT,
+    ADD COLUMN IF NOT EXISTS admin_evidence_notes TEXT,
+    ADD COLUMN IF NOT EXISTS worker_partial_amount NUMERIC(14, 2),
+    ADD COLUMN IF NOT EXISTS client_partial_amount NUMERIC(14, 2),
+    ADD COLUMN IF NOT EXISTS review_required BOOLEAN DEFAULT false;

@@ -77,10 +77,153 @@ public class JobRequestController {
         jobRequest.setClient(client);
         jobRequest.setWorker(worker);
         jobRequest.setStatus(JobStatus.PENDING);
-        jobRequest.setTotalCost(worker.getHourlyRate());
+        
+        // Use client's offered jobPrice if provided, otherwise use worker's hourly rate
+        Double offerPrice = jobRequest.getJobPrice();
+        if (offerPrice != null && offerPrice > 0) {
+            jobRequest.setTotalCost(offerPrice);
+        } else {
+            jobRequest.setTotalCost(worker.getHourlyRate());
+        }
 
         JobRequest saved = jobRequestRepository.save(jobRequest);
+
+        // Create notification for worker about new job offer
+        if (worker.getUser() != null) {
+            notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                    .user(worker.getUser())
+                    .title("📢 New Job Offer")
+                    .message(client.getFullName() + " has sent you a job offer for " + jobRequest.getDescription() + ". Budget: KES " + jobRequest.getTotalCost())
+                    .type("INFO")
+                    .build());
+        }
+
         return ResponseEntity.ok(JobRequestDTO.from(saved));
+    }
+
+    // POST: Worker submits counter-offer
+    @PostMapping("/{jobId}/counter-offer")
+    @PreAuthorize("hasAuthority('Worker')")
+    @Transactional
+    public ResponseEntity<?> submitCounterOffer(
+            @PathVariable UUID jobId,
+            @RequestParam Double counterPrice,
+            Principal principal) {
+        return jobRequestRepository.findById(jobId).map(job -> {
+            User actor = userRepository.findByUsername(principal.getName()).orElse(null);
+            if (actor == null) return ResponseEntity.status(401).body("Unauthorized.");
+
+            if (job.getWorker() == null || job.getWorker().getUser() == null ||
+                    !job.getWorker().getUser().getId().equals(actor.getId())) {
+                return ResponseEntity.status(403).body("Forbidden: Only the assigned worker can submit a counter-offer.");
+            }
+
+            if (job.getStatus() != JobStatus.PENDING) {
+                return ResponseEntity.badRequest().body("Counter-offers can only be submitted for pending jobs.");
+            }
+
+            if (counterPrice <= 0) {
+                return ResponseEntity.badRequest().body("Counter-offer price must be greater than 0.");
+            }
+
+            job.setNegotiatedPrice(counterPrice);
+
+            // Notify client about counter-offer
+            if (job.getClient() != null) {
+                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                        .user(job.getClient())
+                        .title("💰 Counter-Offer Received")
+                        .message(job.getWorker().getFullName() + " has submitted a counter-offer of KES " + counterPrice + " for your job request.")
+                        .type("INFO")
+                        .build());
+            }
+
+            JobRequest saved = jobRequestRepository.save(job);
+            return ResponseEntity.ok(toDtoWithPayment(saved));
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    // POST: Client accepts counter-offer
+    @PostMapping("/{jobId}/accept-counter-offer")
+    @PreAuthorize("hasAuthority('Client')")
+    @Transactional
+    public ResponseEntity<?> acceptCounterOffer(
+            @PathVariable UUID jobId,
+            Principal principal) {
+        return jobRequestRepository.findById(jobId).map(job -> {
+            User actor = userRepository.findByUsername(principal.getName()).orElse(null);
+            if (actor == null) return ResponseEntity.status(401).body("Unauthorized.");
+
+            if (!job.getClient().getId().equals(actor.getId())) {
+                return ResponseEntity.status(403).body("Forbidden: Only the client can accept the counter-offer.");
+            }
+
+            if (job.getNegotiatedPrice() == null) {
+                return ResponseEntity.badRequest().body("No counter-offer to accept.");
+            }
+
+            if (job.getStatus() != JobStatus.PENDING) {
+                return ResponseEntity.badRequest().body("Counter-offers can only be accepted for pending jobs.");
+            }
+
+            // Update job price to negotiated price
+            job.setJobPrice(job.getNegotiatedPrice());
+            job.setTotalCost(job.getNegotiatedPrice());
+
+            // Notify worker about acceptance
+            if (job.getWorker() != null && job.getWorker().getUser() != null) {
+                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                        .user(job.getWorker().getUser())
+                        .title("✅ Counter-Offer Accepted")
+                        .message(job.getClient().getFullName() + " has accepted your counter-offer of KES " + job.getNegotiatedPrice() + ". You can now accept the job.")
+                        .type("SUCCESS")
+                        .build());
+            }
+
+            JobRequest saved = jobRequestRepository.save(job);
+            return ResponseEntity.ok(JobRequestDTO.from(saved));
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    // POST: Client submits counter-offer (to respond to worker's counter or initial negotiation)
+    @PostMapping("/{jobId}/client-counter-offer")
+    @PreAuthorize("hasAuthority('Client')")
+    @Transactional
+    public ResponseEntity<?> submitClientCounterOffer(
+            @PathVariable UUID jobId,
+            @RequestParam Double counterPrice,
+            Principal principal) {
+        return jobRequestRepository.findById(jobId).map(job -> {
+            User actor = userRepository.findByUsername(principal.getName()).orElse(null);
+            if (actor == null) return ResponseEntity.status(401).body("Unauthorized.");
+
+            if (job.getClient() == null || !job.getClient().getId().equals(actor.getId())) {
+                return ResponseEntity.status(403).body("Forbidden: Only the client can submit a counter-offer.");
+            }
+
+            if (job.getStatus() != JobStatus.PENDING) {
+                return ResponseEntity.badRequest().body("Counter-offers can only be submitted for pending jobs.");
+            }
+
+            if (counterPrice <= 0) {
+                return ResponseEntity.badRequest().body("Counter-offer price must be greater than 0.");
+            }
+
+            job.setNegotiatedPrice(counterPrice);
+
+            // Notify worker about client's counter-offer
+            if (job.getWorker() != null && job.getWorker().getUser() != null) {
+                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                        .user(job.getWorker().getUser())
+                        .title("💰 Counter-Offer from Client")
+                        .message(job.getClient().getFullName() + " has submitted a counter-offer of KES " + counterPrice + " for your job request.")
+                        .type("INFO")
+                        .build());
+            }
+
+            JobRequest saved = jobRequestRepository.save(job);
+            return ResponseEntity.ok(toDtoWithPayment(saved));
+        }).orElse(ResponseEntity.notFound().build());
     }
 
     // READ: Get all job requests for a client

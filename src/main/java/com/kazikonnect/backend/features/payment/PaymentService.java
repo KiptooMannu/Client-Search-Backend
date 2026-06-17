@@ -55,8 +55,9 @@ public class PaymentService {
             throw new RuntimeException("Forbidden: you are not permitted to pay for this job.");
         }
 
-        Double amount = Optional.ofNullable(job.getTotalCost()).orElse(0.0);
-        if (amount <= 0) {
+        // Use negotiated price if set, otherwise use total cost
+        Double amount = Optional.ofNullable(job.getNegotiatedPrice()).orElse(job.getTotalCost());
+        if (amount == null || amount <= 0) {
             throw new RuntimeException("Invalid job amount.");
         }
 
@@ -360,6 +361,12 @@ public class PaymentService {
 
         job.setStatus(JobStatus.APPROVED);
         job.setApprovedAt(LocalDateTime.now());
+        
+        // Set review required flag if no review exists yet
+        if (job.getReview() == null) {
+            job.setReviewRequired(true);
+        }
+        
         jobRequestRepository.save(job);
 
         walletService.creditWallet(job.getWorker().getUser(), workerNet,
@@ -687,8 +694,9 @@ public class PaymentService {
                         || job.getStatus() == JobStatus.ACCEPTED
                         || job.getStatus() == JobStatus.ASSIGNED) {
                     job.setStatus(JobStatus.IN_PROGRESS);
+                    job.setEscrowFunded(true);
                     jobRequestRepository.save(job);
-                    LOGGER.info("Job {} status -> IN_PROGRESS (payment captured in escrow)", job.getId());
+                    LOGGER.info("Job {} status -> IN_PROGRESS, escrowFunded -> true (payment captured in escrow)", job.getId());
                 } else {
                     LOGGER.info("Job {} already has status {}, not transitioning", job.getId(), job.getStatus());
                 }

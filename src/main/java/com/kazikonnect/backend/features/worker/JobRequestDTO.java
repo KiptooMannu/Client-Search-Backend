@@ -36,7 +36,8 @@ public record JobRequestDTO(
     Double platformFee,
     Double workerNetAmount,
     String escrowMessage,
-    String mpesaReceiptNumber
+    String mpesaReceiptNumber,
+    Boolean escrowFunded
 ) {
     public static JobRequestDTO from(JobRequest j) {
         return from(j, null);
@@ -76,7 +77,8 @@ public record JobRequestDTO(
             payment != null ? payment.getPlatformFee() : null,
             payment != null ? payment.getWorkerAmount() : null,
             payment != null ? payment.getMessage() : null,
-            payment != null ? payment.getMpesaReceiptNumber() : null
+            payment != null ? payment.getMpesaReceiptNumber() : null,
+            j.getEscrowFunded()
         );
     }
 

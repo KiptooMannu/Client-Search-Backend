@@ -8,7 +8,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.transaction.annotation.Transactional;
+
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -27,7 +31,7 @@ public class ReviewController {
     // CREATE: Client leaves a review for a worker
     @PostMapping
     @PreAuthorize("hasAuthority('Client')")
-    @org.springframework.transaction.annotation.Transactional
+    @Transactional
     public ResponseEntity<?> createReview(
             @RequestParam UUID clientId,
             @RequestParam UUID workerProfileId,
@@ -54,6 +58,7 @@ public class ReviewController {
                 review.setJobRequest(job);
                 // Finalize the job lifecycle: COMPLETED
                 job.setStatus(JobStatus.COMPLETED);
+                job.setReviewRequired(false);
                 jobRequestRepository.save(job);
             });
         }
@@ -78,6 +83,18 @@ public class ReviewController {
         return reviewRepository.findAllByWorkerId(workerProfileId).stream()
                 .map(ReviewDTO::from)
                 .collect(Collectors.toList());
+    }
+
+    // READ: Get worker rating summary (average rating and review count)
+    @GetMapping("/worker/{workerProfileId}/summary")
+    public ResponseEntity<?> getWorkerRatingSummary(@PathVariable UUID workerProfileId) {
+        Optional<Double> avgRating = reviewRepository.findAverageRatingByWorkerId(workerProfileId);
+        Long reviewCount = reviewRepository.countReviewsByWorkerId(workerProfileId);
+        
+        return ResponseEntity.ok(Map.of(
+            "averageRating", avgRating.orElse(0.0),
+            "reviewCount", reviewCount != null ? reviewCount : 0L
+        ));
     }
 
     // READ: Get all reviews left by a client

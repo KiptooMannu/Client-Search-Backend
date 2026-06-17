@@ -3,6 +3,8 @@ package com.kazikonnect.backend.features.worker;
 import com.kazikonnect.backend.features.auth.User;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import java.sql.Types;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -43,15 +45,31 @@ public class JobRequest {
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
-    @Column(name = "total_cost")
+    @JdbcTypeCode(Types.NUMERIC)
+    @Column(name = "total_cost", precision = 14, scale = 2)
     private Double totalCost;
 
-    
+    @JdbcTypeCode(Types.NUMERIC)
+    @Column(name = "job_price", precision = 14, scale = 2)
+    private Double jobPrice;
+
+    @JdbcTypeCode(Types.NUMERIC)
+    @Column(name = "negotiated_price", precision = 14, scale = 2)
+    private Double negotiatedPrice;
+
     @Column(name = "required_experience")
     private Integer requiredExperience;
 
     @OneToOne(mappedBy = "jobRequest", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private Review review;
+
+    @Builder.Default
+    @Column(name = "review_required")
+    private Boolean reviewRequired = false;
+
+    @Builder.Default
+    @Column(name = "escrow_funded")
+    private Boolean escrowFunded = false;
 
     @Column(name = "started_at")
     private LocalDateTime startedAt;
@@ -95,17 +113,18 @@ public class JobRequest {
     @Column(name = "admin_evidence_notes", columnDefinition = "TEXT")
     private String adminEvidenceNotes;
 
-    @org.hibernate.annotations.JdbcTypeCode(java.sql.Types.NUMERIC)
+    @JdbcTypeCode(Types.NUMERIC)
     @Column(name = "worker_partial_amount")
     private Double workerPartialAmount;
 
-    @org.hibernate.annotations.JdbcTypeCode(java.sql.Types.NUMERIC)
+    @JdbcTypeCode(Types.NUMERIC)
     @Column(name = "client_partial_amount")
     private Double clientPartialAmount;
 
     @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
+        if (createdAt == null) {
+            createdAt = LocalDateTime.now();
+        }
     }
 }
-
