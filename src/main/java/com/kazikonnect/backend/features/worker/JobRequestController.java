@@ -197,7 +197,7 @@ public class JobRequestController {
             User actor = userRepository.findByUsername(principal.getName()).orElse(null);
             if (actor == null) return ResponseEntity.status(401).body("Unauthorized.");
 
-            if (job.getClient() == null || !job.getClient().getId().equals(actor.getId())) {
+            if (!job.getClient().getId().equals(actor.getId())) {
                 return ResponseEntity.status(403).body("Forbidden: Only the client can submit a counter-offer.");
             }
 
@@ -222,7 +222,50 @@ public class JobRequestController {
             }
 
             JobRequest saved = jobRequestRepository.save(job);
-            return ResponseEntity.ok(toDtoWithPayment(saved));
+            return ResponseEntity.ok(JobRequestDTO.from(saved));
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    // POST: Worker rejects client's counter-offer
+    @PostMapping("/{jobId}/reject-counter-offer")
+    @PreAuthorize("hasAuthority('Worker')")
+    @Transactional
+    public ResponseEntity<?> rejectCounterOffer(
+            @PathVariable UUID jobId,
+            Principal principal) {
+        return jobRequestRepository.findById(jobId).map(job -> {
+            User actor = userRepository.findByUsername(principal.getName()).orElse(null);
+            if (actor == null) return ResponseEntity.status(401).body("Unauthorized.");
+
+            if (job.getWorker() == null || job.getWorker().getUser() == null ||
+                    !job.getWorker().getUser().getId().equals(actor.getId())) {
+                return ResponseEntity.status(403).body("Forbidden: Only the assigned worker can reject a counter-offer.");
+            }
+
+            if (job.getNegotiatedPrice() == null) {
+                return ResponseEntity.badRequest().body("No counter-offer to reject.");
+            }
+
+            if (job.getStatus() != JobStatus.PENDING) {
+                return ResponseEntity.badRequest().body("Counter-offers can only be rejected for pending jobs.");
+            }
+
+            // Clear the negotiated price
+            Double rejectedPrice = job.getNegotiatedPrice();
+            job.setNegotiatedPrice(null);
+
+            // Notify client about rejection
+            if (job.getClient() != null) {
+                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                        .user(job.getClient())
+                        .title("❌ Counter-Offer Rejected")
+                        .message(job.getWorker().getFullName() + " has rejected your counter-offer of KES " + rejectedPrice + ". You can submit a new offer.")
+                        .type("INFO")
+                        .build());
+            }
+
+            JobRequest saved = jobRequestRepository.save(job);
+            return ResponseEntity.ok(JobRequestDTO.from(saved));
         }).orElse(ResponseEntity.notFound().build());
     }
 
@@ -342,6 +385,20 @@ public class JobRequestController {
 
             // LOGIC: If worker ACCEPTS the job
             if (targetStatus == JobStatus.ACCEPTED && workerOwner && oldStatus != JobStatus.ACCEPTED) {
+                // If there's a negotiated price, update totalCost to match
+                if (job.getNegotiatedPrice() != null && job.getNegotiatedPrice() > 0) {
+                    job.setJobPrice(job.getNegotiatedPrice());
+                    job.setTotalCost(job.getNegotiatedPrice());
+                    
+                    // Notify client about negotiated price acceptance
+                    notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                            .user(job.getClient())
+                            .title("✅ Negotiated Price Accepted")
+                            .message(job.getWorker().getFullName() + " has accepted your counter-offer of KES " + job.getNegotiatedPrice() + ". The job price is now updated.")
+                            .type("SUCCESS")
+                            .build());
+                }
+                
                 notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
                         .user(job.getClient())
                         .title("Job Accepted — Payment Required!")
