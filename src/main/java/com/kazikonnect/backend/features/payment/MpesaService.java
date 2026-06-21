@@ -171,6 +171,10 @@ public class MpesaService {
     }
 
     public boolean isAcceptedCallbackSource(String remoteIp) {
+        if ("sandbox".equalsIgnoreCase(mpesaEnv)) {
+            LOGGER.info("Bypassing M-Pesa callback IP validation in sandbox environment for remote IP: {}", remoteIp);
+            return true;
+        }
         String clientIp = CallbackIpResolver.resolve(remoteIp, remoteIp);
         if (callbackAllowedIps == null || callbackAllowedIps.isBlank()) {
             LOGGER.warn("MPESA callback source validation is disabled because MPESA_CALLBACK_ALLOWED_IPS is not configured.");

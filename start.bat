@@ -18,13 +18,18 @@ if "!DB_MODE!"=="h2" (
 )
 
 :: Load .env if present (skip comments and empty lines)
+:: Fixed: assign via intermediate "key"/"val" vars and expand with ! ! (delayed
+:: expansion) inside a fully quoted set statement. This makes set treat
+:: characters like & | < > ^ in values as literal text instead of letting
+:: cmd.exe parse them as command separators/redirection.
 if exist "%~dp0.env" (
 	echo Loading environment variables from .env file...
 	for /f "usebackq tokens=1* delims==" %%A in ("%~dp0.env") do (
-		set "line=%%A"
-		if not "!line!"=="" if not "!line:~0,1!"=="#" (
-			set "%%A=%%B"
-			echo   - Loaded: %%A
+		set "key=%%A"
+		set "val=%%B"
+		if not "!key!"=="" if not "!key:~0,1!"=="#" (
+			set "!key!=!val!"
+			echo   - Loaded: !key!
 		)
 	)
 )
@@ -37,24 +42,25 @@ if "!DB_MODE!"=="h2" (
 	echo Console: http://localhost:8080/h2-console
 ) else (
 	echo Database: Neon PostgreSQL (Cloud)
-	echo URL: %DB_URL%
+	echo URL: !DB_URL!
 )
 echo.
 
 :: Convert .env variables to Spring Boot environment variable format (with underscores)
-set SPRING_DATASOURCE_URL=%DB_URL%
-set SPRING_DATASOURCE_USERNAME=%DB_USERNAME%
-set SPRING_DATASOURCE_PASSWORD=%DB_PASSWORD%
-set APP_JWT_SECRET=%JWT_SECRET%
-set APP_JWT_EXPIRATION=%JWT_EXPIRATION%
-set APP_JWT_REFRESHEXPIRATION=%JWT_REFRESH_EXPIRATION%
-set CLOUDINARY_CLOUD_NAME=%CLOUDINARY_CLOUD_NAME%
-set CLOUDINARY_API_KEY=%CLOUDINARY_API_KEY%
-set CLOUDINARY_API_SECRET=%CLOUDINARY_API_SECRET%
-set EMAIL_SMTP_USERNAME=%EMAIL_SMTP_USERNAME%
-set EMAIL_SMTP_PASSWORD=%EMAIL_SMTP_PASSWORD%
-set EMAIL_FROM=%EMAIL_FROM%
-set FRONTEND_URL=%FRONTEND_URL%
+:: Use delayed expansion (! !) here too, consistent with how the values were loaded above.
+set "SPRING_DATASOURCE_URL=!DB_URL!"
+set "SPRING_DATASOURCE_USERNAME=!DB_USERNAME!"
+set "SPRING_DATASOURCE_PASSWORD=!DB_PASSWORD!"
+set "APP_JWT_SECRET=!JWT_SECRET!"
+set "APP_JWT_EXPIRATION=!JWT_EXPIRATION!"
+set "APP_JWT_REFRESHEXPIRATION=!JWT_REFRESH_EXPIRATION!"
+set "CLOUDINARY_CLOUD_NAME=!CLOUDINARY_CLOUD_NAME!"
+set "CLOUDINARY_API_KEY=!CLOUDINARY_API_KEY!"
+set "CLOUDINARY_API_SECRET=!CLOUDINARY_API_SECRET!"
+set "EMAIL_SMTP_USERNAME=!EMAIL_SMTP_USERNAME!"
+set "EMAIL_SMTP_PASSWORD=!EMAIL_SMTP_PASSWORD!"
+set "EMAIL_FROM=!EMAIL_FROM!"
+set "FRONTEND_URL=!FRONTEND_URL!"
 
 if "!DB_MODE!"=="h2" (
 	C:\Users\User\maven\apache-maven-3.9.6\bin\mvn.cmd spring-boot:run -Dspring-boot.run.arguments="--spring.profiles.active=h2"

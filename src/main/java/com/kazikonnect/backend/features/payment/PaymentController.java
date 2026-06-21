@@ -50,12 +50,35 @@ public class PaymentController {
     }
 
     @GetMapping("/receipt/{jobId}")
-    public ResponseEntity<PaymentStatusResponse> getPaymentReceipt(@PathVariable UUID jobId) {
+    public ResponseEntity<PaymentReceiptDTO> getPaymentReceipt(@PathVariable UUID jobId) {
         PaymentStatusResponse status = paymentService.getPaymentStatus(jobId);
         if (status.mpesaReceiptNumber() == null || status.mpesaReceiptNumber().isBlank()) {
             return ResponseEntity.notFound().build();
         }
-        return ResponseEntity.ok(status);
+        PaymentReceiptDTO receipt = new PaymentReceiptDTO(
+            status.mpesaReceiptNumber(),
+            status.transactionDate(),
+            status.amount(),
+            status.platformFee(),
+            status.workerAmount(),
+            status.status()
+        );
+        return ResponseEntity.ok(receipt);
+    }
+
+    @PostMapping("/verify-receipt/{jobId}")
+    @PreAuthorize("hasAuthority('Client') or hasAuthority('Admin')")
+    public ResponseEntity<?> verifyReceiptManual(
+            @PathVariable UUID jobId,
+            @RequestParam String receiptNumber,
+            Principal principal) {
+        try {
+            paymentService.verifyReceiptManual(jobId, receiptNumber, principal);
+            return ResponseEntity.ok(Map.of("status", "SUCCESS", "message", "Receipt verified and recorded."));
+        } catch (Exception e) {
+            log.error("Manual receipt verification failed: {}", e.getMessage(), e);
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage(), "status", "FAILED"));
+        }
     }
 
     @PostMapping("/escrow/release/{jobId}")

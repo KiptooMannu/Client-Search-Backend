@@ -25,7 +25,7 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     @org.springframework.data.jpa.repository.Query("SELECT u FROM User u LEFT JOIN FETCH u.auth")
     java.util.List<User> findAllWithAuth();
 
-    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.data.jpa.repository.Modifying(clearAutomatically = true)
     @org.springframework.transaction.annotation.Transactional
     @org.springframework.data.jpa.repository.Query("UPDATE User u SET u.fullName = CONCAT(u.firstName, ' ', u.secondName) " +
            "WHERE (u.fullName IS NULL OR u.fullName = 'Unknown' OR u.fullName = '') " +

@@ -232,7 +232,7 @@ public class AuthService {
         RefreshToken rt = RefreshToken.builder()
                 .user(auth.getUser())
                 .token(refreshToken)
-                .expiryDate(LocalDateTime.now().plusDays(7))
+                .expiresAt(LocalDateTime.now().plusDays(7))
                 .build();
         refreshTokenRepository.save(rt);
 

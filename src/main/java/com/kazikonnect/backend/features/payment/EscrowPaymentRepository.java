@@ -34,6 +34,8 @@ public interface EscrowPaymentRepository extends JpaRepository<EscrowPayment, UU
 
     long countByStatusAndUpdatedAtBefore(EscrowPaymentStatus status, LocalDateTime updatedAt);
 
+    List<EscrowPayment> findByStatusAndUpdatedAtBefore(EscrowPaymentStatus status, LocalDateTime updatedAt);
+
     long countByPhoneNumberAndCreatedAtAfter(String phoneNumber, LocalDateTime createdAt);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

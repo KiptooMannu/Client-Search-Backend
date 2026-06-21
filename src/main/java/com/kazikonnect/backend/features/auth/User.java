@@ -13,6 +13,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.NoArgsConstructor;
+import org.springframework.data.domain.Persistable;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -28,7 +29,7 @@ import java.util.UUID;
 @com.fasterxml.jackson.annotation.JsonIdentityInfo(
     generator = com.fasterxml.jackson.annotation.ObjectIdGenerators.PropertyGenerator.class,
     property = "id")
-public class User {
+public class User implements Persistable<UUID> {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
@@ -93,15 +94,39 @@ public class User {
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 
+    /**
+     * Transient flag used to tell Hibernate/Spring Data definitively whether
+     * this entity is new (should be INSERTed) or already persisted (should be
+     * UPDATEd/merged). Without this, Hibernate falls back to "id == null means
+     * new", which breaks whenever we manually assign a fixed UUID to a
+     * brand-new entity (e.g. deterministic seed data) -- it would incorrectly
+     * attempt a merge/update against a row that doesn't exist yet and throw
+     * an ObjectOptimisticLockingFailureException / StaleObjectStateException.
+     */
+    @Builder.Default
+    @Transient
+    private boolean isNew = true;
+
+    @Override
+    public boolean isNew() {
+        return isNew || id == null;
+    }
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
         updateFullName();
+        this.isNew = false;
     }
 
     @PreUpdate
     protected void onUpdate() {
         updateFullName();
+    }
+
+    @PostLoad
+    protected void onLoad() {
+        this.isNew = false;
     }
 
     private void updateFullName() {

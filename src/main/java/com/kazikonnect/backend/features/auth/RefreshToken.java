@@ -26,8 +26,8 @@ public class RefreshToken {
     @Column(nullable = false, length = 512)
     private String token;
 
-    @Column(name = "expiry_date", nullable = false)
-    private LocalDateTime expiryDate;
+    @Column(name = "expires_at", nullable = false)
+    private LocalDateTime expiresAt;
 
     @Builder.Default
     @Column(name = "is_revoked")

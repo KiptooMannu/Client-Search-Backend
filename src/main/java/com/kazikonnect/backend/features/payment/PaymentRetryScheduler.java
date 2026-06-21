@@ -79,9 +79,9 @@ public class PaymentRetryScheduler {
     }
 
     /**
-     * Query Safaricom for missed STK callbacks every 2 minutes.
+     * Query Safaricom for missed STK callbacks every 10 seconds.
      */
-    @Scheduled(fixedDelay = 120000, initialDelay = 30000)
+    @Scheduled(fixedDelay = 10000, initialDelay = 10000)
     public void reconcileMissedStkCallbacks() {
         try {
             paymentService.reconcilePendingStkPayments();
@@ -132,6 +132,28 @@ public class PaymentRetryScheduler {
             paymentService.refundExpiredPendingPayments();
         } catch (Exception e) {
             LOGGER.error("Error in expired payment refund scheduler: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Auto-release escrowed payments for SUBMITTED jobs after 72 hours.
+     */
+    @Scheduled(cron = "0 0 * * * *")
+    @Transactional
+    public void checkEscrowTimeout() {
+        try {
+            LocalDateTime threshold = LocalDateTime.now().minusHours(72);
+            List<EscrowPayment> escrowedPayments = escrowPaymentRepository.findByStatusAndUpdatedAtBefore(
+                    EscrowPaymentStatus.ESCROWED, threshold);
+
+            for (EscrowPayment payment : escrowedPayments) {
+                if (payment.getJobRequest().getStatus() == com.kazikonnect.backend.features.worker.JobStatus.SUBMITTED) {
+                    LOGGER.info("Auto-releasing escrow for job {}", payment.getJobRequest().getId());
+                    paymentService.autoReleaseEscrow(payment.getJobRequest().getId());
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.error("Error in escrow auto-release scheduler: {}", e.getMessage(), e);
         }
     }
 }

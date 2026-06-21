@@ -15,8 +15,8 @@ import lombok.NoArgsConstructor;
 @Table(name = "skills")
 public class Skill {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @GeneratedValue(strategy = GenerationType.UUID)
+    private java.util.UUID id;
 
     @Column(unique = true, nullable = false)
     private String name;
