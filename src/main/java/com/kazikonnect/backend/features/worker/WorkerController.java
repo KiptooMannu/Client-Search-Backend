@@ -209,10 +209,6 @@ public class WorkerController {
                     }
                 }
 
-                if (existing.getStatus() == WorkerStatus.APPROVED || existing.getStatus() == WorkerStatus.REJECTED) {
-                    existing.setStatus(WorkerStatus.PENDING);
-                    existing.setVisible(false);
-                }
                 return ResponseEntity.ok(WorkerProfileDTO.from(workerProfileRepository.saveAndFlush(existing)));
             }).orElse(ResponseEntity.notFound().build());
         } catch (Exception e) {

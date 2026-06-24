@@ -63,6 +63,14 @@ public class DocumentController {
             document.setPublicId(publicId);
             
             Document saved = documentRepository.save(document);
+
+            // If the document is KYC/identity-related, place the worker profile under review if it was APPROVED or REJECTED
+            if (worker.getStatus() == WorkerStatus.APPROVED || worker.getStatus() == WorkerStatus.REJECTED) {
+                worker.setStatus(WorkerStatus.PENDING);
+                worker.setVisible(false);
+                workerProfileRepository.save(worker);
+            }
+
             return ResponseEntity.ok(DocumentDTO.from(saved));
         } catch (IOException e) {
             return ResponseEntity.internalServerError().body("Failed to upload document: " + e.getMessage());
@@ -116,6 +124,15 @@ public class DocumentController {
             }
 
             documentRepository.delete(doc);
+
+            // If the worker was approved/rejected, set to PENDING for re-verification
+            WorkerProfile worker = doc.getWorker();
+            if (worker != null && (worker.getStatus() == WorkerStatus.APPROVED || worker.getStatus() == WorkerStatus.REJECTED)) {
+                worker.setStatus(WorkerStatus.PENDING);
+                worker.setVisible(false);
+                workerProfileRepository.save(worker);
+            }
+
             return ResponseEntity.ok(Map.of("message", "Document deleted successfully"));
         }).orElse(ResponseEntity.ok(Map.of("message", "Document already deleted")));
     }
