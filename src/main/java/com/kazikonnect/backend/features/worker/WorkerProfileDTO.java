@@ -34,19 +34,19 @@ public record WorkerProfileDTO(
 ) {
     public static WorkerProfileDTO from(WorkerProfile p) {
         Set<String> skillNames = p.getSkills() == null ? Set.of() :
-            p.getSkills().stream().map(Skill::getName).collect(Collectors.toSet());
+            p.getSkills().stream().map(skill -> skill.getName()).collect(Collectors.toSet());
 
         List<WorkHistoryDTO> history = p.getWorkHistory() == null ? List.of() :
-            p.getWorkHistory().stream().map(WorkHistoryDTO::from).collect(Collectors.toList());
+            p.getWorkHistory().stream().map(workHistory -> WorkHistoryDTO.from(workHistory)).collect(Collectors.toList());
 
         List<CertificationDTO> certs = p.getCertifications() == null ? List.of() :
-            p.getCertifications().stream().map(CertificationDTO::from).collect(Collectors.toList());
+            p.getCertifications().stream().map(cert -> CertificationDTO.from(cert)).collect(Collectors.toList());
 
         List<DocumentDTO> docs = p.getDocuments() == null ? List.of() :
-            p.getDocuments().stream().map(DocumentDTO::from).collect(Collectors.toList());
+            p.getDocuments().stream().map(doc -> DocumentDTO.from(doc)).collect(Collectors.toList());
 
         double avgRating = p.getReviews() == null || p.getReviews().isEmpty() ? 0.0 :
-            p.getReviews().stream().mapToInt(Review::getRating).average().orElse(0.0);
+            p.getReviews().stream().mapToInt(review -> review.getRating()).average().orElse(0.0);
         int reviews = p.getReviews() == null ? 0 : p.getReviews().size();
 
         return new WorkerProfileDTO(

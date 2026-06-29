@@ -91,6 +91,10 @@ public class EscrowPayment {
     @Column(name = "b2c_next_retry_at")
     private LocalDateTime b2cNextRetryAt;
 
+    @Builder.Default  // ADD THIS ANNOTATION TO FIX THE WARNING
+    @Column(name = "is_locked_by_dispute")
+    private Boolean isLockedByDispute = false;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

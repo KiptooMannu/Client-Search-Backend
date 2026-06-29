@@ -18,9 +18,11 @@ public class MediaController {
 
     @PostMapping("/upload")
     @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
-    public ResponseEntity<?> uploadMedia(@RequestParam("file") MultipartFile file) {
+    public ResponseEntity<?> uploadMedia(@RequestParam("file") MultipartFile file,
+                                         @RequestParam(required = false) String folder) {
         try {
-            Map<?, ?> uploadResult = cloudinaryService.upload(file, "Kazi Konnect/media");
+            String uploadFolder = folder != null && !folder.isBlank() ? folder : "Kazi Konnect/media";
+            Map<?, ?> uploadResult = cloudinaryService.upload(file, uploadFolder);
             java.util.Map<String, Object> response = new java.util.HashMap<>();
             response.put("url", uploadResult.get("secure_url"));
             response.put("publicId", uploadResult.get("public_id"));

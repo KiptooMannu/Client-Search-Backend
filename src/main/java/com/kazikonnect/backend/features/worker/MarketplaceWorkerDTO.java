@@ -37,11 +37,11 @@ public record MarketplaceWorkerDTO(
             profile.getExperienceYears(),
             profile.isOnline(),
             profile.getBio(),
-            profile.getSkills() == null ? Set.of() : profile.getSkills().stream().map(Skill::getName).collect(Collectors.toSet()),
+            profile.getSkills() == null ? Set.of() : profile.getSkills().stream().map(skill -> skill.getName()).collect(Collectors.toSet()),
             profile.getPreferredLocations() == null ? Set.of() : profile.getPreferredLocations(),
             profile.getReviews() == null || profile.getReviews().isEmpty()
                 ? 0.0
-                : profile.getReviews().stream().mapToInt(Review::getRating).average().orElse(0.0),
+                : profile.getReviews().stream().mapToInt(review -> review.getRating()).average().orElse(0.0),
             profile.getReviews() == null ? 0 : profile.getReviews().size(),
             profile.getStatus() != null ? profile.getStatus().name() : null
         );

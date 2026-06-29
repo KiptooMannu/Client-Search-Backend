@@ -600,7 +600,12 @@ public class PaymentService {
             case 1, 1037 -> "Insufficient funds in your M-Pesa account. Please check your balance and try again.";
             case 1034 -> "Incorrect M-Pesa PIN. Please try again.";
             case 1030 -> "STK request cancelled.";
-            case 2001 -> "Unable to communicate with M-Pesa. Please try again.";
+            case 2001 -> {
+                if (resultDesc != null && resultDesc.toLowerCase().contains("initiator")) {
+                    yield "Incorrect M-Pesa PIN or security credential. Please verify your payment configuration.";
+                }
+                yield "Unable to communicate with M-Pesa. Please try again.";
+            }
             default -> resultDesc != null && !resultDesc.isBlank() ? resultDesc : "Payment failed. Please try again.";
         };
     }
@@ -825,10 +830,14 @@ public class PaymentService {
             LOGGER.warn("Payment request cancelled for CheckoutRequestID={}", checkoutRequestId);
 
         } else if (resultCode == 2001) {
+            // ResultCode 2001: "The initiator information is invalid" - typically wrong PIN or B2C security credential
+            String errorMsg = resultDesc != null && resultDesc.toLowerCase().contains("initiator") 
+                ? "Incorrect M-Pesa PIN or security credential. Please verify your payment configuration."
+                : "Unable to communicate with M-Pesa. Please try again.";
             payment.setStatus(EscrowPaymentStatus.FAILED);
-            payment.setFailureReason("NETWORK_FAILURE");
-            payment.setMessage("Network error. Unable to reach M-Pesa. Please try again.");
-            LOGGER.error("Payment failed - network failure for CheckoutRequestID={}", checkoutRequestId);
+            payment.setFailureReason("INITIATOR_INVALID");
+            payment.setMessage(errorMsg);
+            LOGGER.error("Payment failed - initiator/security issue for CheckoutRequestID={}: {}", checkoutRequestId, resultDesc);
 
         } else if (resultCode == 2002) {
             payment.setStatus(EscrowPaymentStatus.FAILED);

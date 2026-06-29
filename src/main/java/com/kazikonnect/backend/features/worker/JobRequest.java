@@ -121,10 +121,24 @@ public class JobRequest {
     @Column(name = "client_partial_amount")
     private Double clientPartialAmount;
 
+    @Builder.Default
+    @Column(name = "has_active_dispute")
+    private Boolean hasActiveDispute = false;
+
+    @Column(name = "title")
+    private String title;
+
+    @Column(name = "price_quote")
+    @JdbcTypeCode(Types.NUMERIC)
+    private Double priceQuote;
+
     @PrePersist
     protected void onCreate() {
         if (createdAt == null) {
             createdAt = LocalDateTime.now();
+        }
+        if (hasActiveDispute == null) {
+            hasActiveDispute = false;
         }
     }
 }
