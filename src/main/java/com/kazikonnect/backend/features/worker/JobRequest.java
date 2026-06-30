@@ -132,6 +132,19 @@ public class JobRequest {
     @JdbcTypeCode(Types.NUMERIC)
     private Double priceQuote;
 
+    // Cancellation and expiry fields
+    @Column(name = "cancellation_reason", columnDefinition = "TEXT")
+    private String cancellationReason;
+
+    @Column(name = "cancelled_by")
+    private UUID cancelledBy;
+
+    @Column(name = "cancelled_at")
+    private LocalDateTime cancelledAt;
+
+    @Column(name = "expiry_date")
+    private LocalDateTime expiryDate;
+
     @PrePersist
     protected void onCreate() {
         if (createdAt == null) {

@@ -12,6 +12,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import java.util.UUID;
+import java.util.Map;
 import java.util.stream.Collectors;
 import java.security.Principal;
 
@@ -659,6 +660,147 @@ public class JobRequestController {
 
             jobRequestRepository.delete(job);
             return ResponseEntity.ok(java.util.Map.of("message", "Job request removed successfully."));
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    // PUT: Client cancels hire (before funding)
+    @PutMapping("/{jobId}/cancel")
+    @PreAuthorize("hasAuthority('Client')")
+    @Transactional
+    public ResponseEntity<?> cancelHire(
+            @PathVariable UUID jobId,
+            @RequestBody Map<String, String> payload,
+            Principal principal) {
+        return jobRequestRepository.findById(jobId).map(job -> {
+            User actor = userRepository.findByUsername(principal.getName()).orElse(null);
+            if (actor == null)
+                return ResponseEntity.status(401).body("Unauthorized.");
+
+            if (!job.getClient().getId().equals(actor.getId())) {
+                return ResponseEntity.status(403).body("Forbidden: Only the client can cancel the hire.");
+            }
+
+            // Can only cancel if job is in ACCEPTED or AWAITING_FUNDING status and not funded
+            if (job.getStatus() != JobStatus.ACCEPTED && job.getStatus() != JobStatus.AWAITING_FUNDING) {
+                return ResponseEntity.badRequest().body("Job can only be cancelled before funding.");
+            }
+
+            if (job.getEscrowFunded()) {
+                return ResponseEntity.badRequest().body("Cannot cancel hire after escrow has been funded.");
+            }
+
+            job.setStatus(JobStatus.CLIENT_CANCELLED);
+            job.setCancellationReason(payload.get("cancellationReason"));
+            job.setCancelledBy(UUID.fromString(payload.get("cancelledBy")));
+            job.setCancelledAt(java.time.LocalDateTime.parse(payload.get("cancelledAt")));
+
+            JobRequest saved = jobRequestRepository.save(job);
+
+            // Notify worker about cancellation
+            if (job.getWorker() != null && job.getWorker().getUser() != null) {
+                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                        .user(job.getWorker().getUser())
+                        .title("Hire Cancelled")
+                        .message(job.getClient().getFullName() + " has cancelled the hire. Reason: " + payload.get("cancellationReason"))
+                        .type("INFO")
+                        .build());
+            }
+
+            return ResponseEntity.ok(JobRequestDTO.from(saved));
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    // PUT: Worker withdraws acceptance (before funding)
+    @PutMapping("/{jobId}/withdraw")
+    @PreAuthorize("hasAuthority('Worker')")
+    @Transactional
+    public ResponseEntity<?> withdrawAcceptance(
+            @PathVariable UUID jobId,
+            @RequestBody Map<String, String> payload,
+            Principal principal) {
+        return jobRequestRepository.findById(jobId).map(job -> {
+            User actor = userRepository.findByUsername(principal.getName()).orElse(null);
+            if (actor == null)
+                return ResponseEntity.status(401).body("Unauthorized.");
+
+            if (job.getWorker() == null || job.getWorker().getUser() == null ||
+                    !job.getWorker().getUser().getId().equals(actor.getId())) {
+                return ResponseEntity.status(403).body("Forbidden: Only the assigned worker can withdraw acceptance.");
+            }
+
+            // Can only withdraw if job is in ACCEPTED or AWAITING_FUNDING status and not funded
+            if (job.getStatus() != JobStatus.ACCEPTED && job.getStatus() != JobStatus.AWAITING_FUNDING) {
+                return ResponseEntity.badRequest().body("Acceptance can only be withdrawn before funding.");
+            }
+
+            if (job.getEscrowFunded()) {
+                return ResponseEntity.badRequest().body("Cannot withdraw acceptance after escrow has been funded.");
+            }
+
+            job.setStatus(JobStatus.WORKER_CANCELLED);
+            job.setCancellationReason(payload.get("cancellationReason"));
+            job.setCancelledBy(UUID.fromString(payload.get("cancelledBy")));
+            job.setCancelledAt(java.time.LocalDateTime.parse(payload.get("cancelledAt")));
+
+            JobRequest saved = jobRequestRepository.save(job);
+
+            // Notify client about withdrawal
+            if (job.getClient() != null) {
+                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                        .user(job.getClient())
+                        .title("Worker Withdrew Acceptance")
+                        .message(job.getWorker().getFullName() + " has withdrawn their acceptance. Reason: " + payload.get("cancellationReason"))
+                        .type("INFO")
+                        .build());
+            }
+
+            return ResponseEntity.ok(JobRequestDTO.from(saved));
+        }).orElse(ResponseEntity.notFound().build());
+    }
+
+    // PUT: System expires job (due to lack of funding)
+    @PutMapping("/{jobId}/expire")
+    @Transactional
+    public ResponseEntity<?> expireJob(
+            @PathVariable UUID jobId,
+            @RequestBody Map<String, String> payload) {
+        return jobRequestRepository.findById(jobId).map(job -> {
+            // Can only expire if job is in ACCEPTED or AWAITING_FUNDING status and not funded
+            if (job.getStatus() != JobStatus.ACCEPTED && job.getStatus() != JobStatus.AWAITING_FUNDING) {
+                return ResponseEntity.badRequest().body("Job can only be expired if awaiting funding.");
+            }
+
+            if (job.getEscrowFunded()) {
+                return ResponseEntity.badRequest().body("Cannot expire job after escrow has been funded.");
+            }
+
+            job.setStatus(JobStatus.EXPIRED);
+            job.setCancellationReason(payload.get("cancellationReason"));
+            job.setCancelledBy(UUID.fromString(payload.get("cancelledBy")));
+            job.setCancelledAt(java.time.LocalDateTime.parse(payload.get("cancelledAt")));
+
+            JobRequest saved = jobRequestRepository.save(job);
+
+            // Notify both client and worker about expiry
+            if (job.getClient() != null) {
+                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                        .user(job.getClient())
+                        .title("Job Expired")
+                        .message("The job has expired due to lack of funding within the allowed time period.")
+                        .type("WARNING")
+                        .build());
+            }
+
+            if (job.getWorker() != null && job.getWorker().getUser() != null) {
+                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                        .user(job.getWorker().getUser())
+                        .title("Job Expired")
+                        .message("The job has expired due to lack of funding within the allowed time period.")
+                        .type("WARNING")
+                        .build());
+            }
+
+            return ResponseEntity.ok(JobRequestDTO.from(saved));
         }).orElse(ResponseEntity.notFound().build());
     }
 

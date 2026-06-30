@@ -2,8 +2,10 @@ package com.kazikonnect.backend.features.worker;
 
 public enum JobStatus {
     NEGOTIATING,        // Price/terms negotiation in progress
-    PENDING,            // Initial request
-    ACCEPTED,           // Worker accepted
+    PENDING_APPLICATION,// Initial request
+    ACCEPTED,           // Worker accepted (awaiting funding)
+    AWAITING_FUNDING,   // Worker accepted, awaiting client escrow funding
+    FUNDED,             // Escrow funded, work can begin
     ASSIGNED,           // Worker assigned after payment
     IN_PROGRESS,        // Work is being done
     SUBMITTED,          // Worker says work is finished (Awaiting client approval)
@@ -12,8 +14,12 @@ public enum JobStatus {
     APPROVED,           // Client is satisfied (Triggers payment release logic)
     COMPLETED,          // Final state after review/rating
     DISPUTED,           // Conflict opened by client
+    RESOLVED,           // Dispute resolved by admin
     REJECTED,           // Worker declined initial request
-    CANCELLED           // Job cancelled by client/worker
+    CLIENT_CANCELLED,   // Job cancelled by client before funding
+    WORKER_CANCELLED,   // Worker withdrew acceptance before funding
+    EXPIRED,            // Job expired due to lack of funding
+    CANCELLED           // Generic cancelled (legacy)
 }
 
 
