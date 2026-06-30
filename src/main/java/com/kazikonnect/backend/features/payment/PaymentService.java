@@ -769,6 +769,7 @@ public class PaymentService {
             if (job != null) {
                 if (job.getStatus() == JobStatus.PENDING
                         || job.getStatus() == JobStatus.ACCEPTED
+                        || job.getStatus() == JobStatus.AWAITING_FUNDING
                         || job.getStatus() == JobStatus.ASSIGNED) {
                     job.setStatus(JobStatus.IN_PROGRESS);
                     job.setEscrowFunded(true);

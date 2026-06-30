@@ -22,6 +22,7 @@ import java.util.UUID;
 public class DisputeController {
 
     private final DisputeService disputeService;
+    private final DisputeRepository disputeRepository;
 
     // ─────────────────────────────────────────────────────────────────────────
     // FILE DISPUTE
@@ -318,6 +319,34 @@ public class DisputeController {
     }
 
     /**
+     * Get all disputes (for admin dashboard)
+     * GET /api/disputes/all
+     */
+    @GetMapping("/all")
+    @PreAuthorize("hasAuthority('Admin')")
+    public ResponseEntity<Map<String, Object>> getAllDisputes(Pageable pageable) {
+        log.info("Fetching all disputes");
+
+        List<Dispute> allDisputes = disputeRepository.findAllByOrderByCreatedAtDesc();
+        List<DisputeListItemDTO> items = new java.util.ArrayList<>();
+        for (Dispute dispute : allDisputes) {
+            items.add(disputeService.buildDisputeListItemDTO(dispute));
+        }
+
+        int start = (int) pageable.getOffset();
+        int end = Math.min((start + pageable.getPageSize()), items.size());
+        List<DisputeListItemDTO> pageContent = items.subList(start, end);
+
+        return ResponseEntity.ok(Map.of(
+                "status", "SUCCESS",
+                "disputes", pageContent,
+                "totalElements", items.size(),
+                "totalPages", (int) Math.ceil((double) items.size() / pageable.getPageSize()),
+                "currentPage", pageable.getPageNumber()
+        ));
+    }
+
+    /**
      * Get audit trail for dispute
      * GET /api/disputes/{disputeId}/audit-trail
      */
@@ -333,6 +362,41 @@ public class DisputeController {
                 "auditTrail", auditTrail,
                 "count", auditTrail.size()
         ));
+    }
+
+    /**
+     * Get dispute by job ID
+     * GET /api/disputes/by-job/{jobId}
+     */
+    @GetMapping("/by-job/{jobId}")
+    @PreAuthorize("hasAuthority('Client') or hasAuthority('Worker') or hasAuthority('Admin')")
+    public ResponseEntity<Map<String, Object>> getDisputeByJobId(@PathVariable UUID jobId, Principal principal) {
+        log.info("Fetching dispute for job: {}", jobId);
+        
+        try {
+            com.kazikonnect.backend.features.dispute.Dispute dispute = disputeRepository.findByJobRequestId(jobId)
+                    .orElse(null);
+            
+            if (dispute == null) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                        "status", "NOT_FOUND",
+                        "message", "No dispute found for this job"
+                ));
+            }
+            
+            DisputeDetailDTO detail = disputeService.getDisputeDetail(dispute.getId(), principal);
+            
+            return ResponseEntity.ok(Map.of(
+                    "status", "SUCCESS",
+                    "data", detail
+            ));
+        } catch (Exception e) {
+            log.error("Error fetching dispute by job ID: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "status", "ERROR",
+                    "message", "Failed to fetch dispute details"
+            ));
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────

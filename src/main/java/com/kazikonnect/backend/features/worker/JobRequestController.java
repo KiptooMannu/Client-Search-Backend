@@ -15,6 +15,9 @@ import java.util.UUID;
 import java.util.Map;
 import java.util.stream.Collectors;
 import java.security.Principal;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
 
 @RestController
 @RequestMapping("/api/jobs")
@@ -585,7 +588,7 @@ public class JobRequestController {
     @Transactional
     public ResponseEntity<?> resolveDispute(
             @PathVariable UUID jobId,
-            @RequestParam String decisionReason,
+            @RequestParam(required = false) String decisionReason,
             @RequestParam(required = false) String evidenceNotes,
             @RequestParam double workerPartialAmount,
             @RequestParam double clientPartialAmount,
@@ -691,8 +694,8 @@ public class JobRequestController {
 
             job.setStatus(JobStatus.CLIENT_CANCELLED);
             job.setCancellationReason(payload.get("cancellationReason"));
-            job.setCancelledBy(UUID.fromString(payload.get("cancelledBy")));
-            job.setCancelledAt(java.time.LocalDateTime.parse(payload.get("cancelledAt")));
+            job.setCancelledBy(parseCancelledBy(payload.get("cancelledBy")));
+            job.setCancelledAt(parseDateTime(payload.get("cancelledAt")));
 
             JobRequest saved = jobRequestRepository.save(job);
 
@@ -739,8 +742,8 @@ public class JobRequestController {
 
             job.setStatus(JobStatus.WORKER_CANCELLED);
             job.setCancellationReason(payload.get("cancellationReason"));
-            job.setCancelledBy(UUID.fromString(payload.get("cancelledBy")));
-            job.setCancelledAt(java.time.LocalDateTime.parse(payload.get("cancelledAt")));
+            job.setCancelledBy(parseCancelledBy(payload.get("cancelledBy")));
+            job.setCancelledAt(parseDateTime(payload.get("cancelledAt")));
 
             JobRequest saved = jobRequestRepository.save(job);
 
@@ -776,8 +779,8 @@ public class JobRequestController {
 
             job.setStatus(JobStatus.EXPIRED);
             job.setCancellationReason(payload.get("cancellationReason"));
-            job.setCancelledBy(UUID.fromString(payload.get("cancelledBy")));
-            job.setCancelledAt(java.time.LocalDateTime.parse(payload.get("cancelledAt")));
+            job.setCancelledBy(parseCancelledBy(payload.get("cancelledBy")));
+            job.setCancelledAt(parseDateTime(payload.get("cancelledAt")));
 
             JobRequest saved = jobRequestRepository.save(job);
 
@@ -807,6 +810,28 @@ public class JobRequestController {
     private JobRequestDTO toDtoWithPayment(JobRequest job) {
         EscrowPayment payment = escrowPaymentRepository.findTopByJobRequestIdOrderByCreatedAtDesc(job.getId()).orElse(null);
         return JobRequestDTO.from(job, payment);
+    }
+
+    private LocalDateTime parseDateTime(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        try {
+            return java.time.LocalDateTime.parse(value);
+        } catch (DateTimeParseException e) {
+            return OffsetDateTime.parse(value).toLocalDateTime();
+        }
+    }
+
+    private UUID parseCancelledBy(String cancelledBy) {
+        if (cancelledBy == null || cancelledBy.isBlank()) {
+            return null;
+        }
+        if ("SYSTEM".equalsIgnoreCase(cancelledBy)) {
+            return UUID.fromString("00000000-0000-0000-0000-000000000000");
+        }
+        return UUID.fromString(cancelledBy);
     }
 
     private String safeWorkerName(WorkerProfile worker) {

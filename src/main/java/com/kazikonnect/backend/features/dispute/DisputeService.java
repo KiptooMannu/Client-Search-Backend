@@ -113,9 +113,10 @@ public class DisputeService {
         escrowPayment.setStatus(EscrowPaymentStatus.DISPUTED);
         escrowPaymentRepository.save(escrowPayment);
 
-        // Mark job as having active dispute
+        // Mark job as having active dispute and change status to DISPUTED
         jobRequest.setHasActiveDispute(true);
         jobRequest.setDisputedAt(LocalDateTime.now());
+        jobRequest.setStatus(JobStatus.DISPUTED);
         jobRequestRepository.save(jobRequest);
 
         // Upload evidence
@@ -679,20 +680,44 @@ public class DisputeService {
                 .build();
     }
 
-    private DisputeListItemDTO buildDisputeListItemDTO(Dispute dispute) {
+    public DisputeListItemDTO buildDisputeListItemDTO(Dispute dispute) {
         JobRequest job = dispute.getJobRequest();
+        
+        // Fetch evidence for this dispute
+        List<DisputeEvidence> evidenceList = evidenceRepository.findByDisputeIdOrderByCreatedAtDesc(dispute.getId());
+        List<DisputeListItemDTO.EvidenceDTO> evidenceDTOs = evidenceList.stream()
+                .map(e -> DisputeListItemDTO.EvidenceDTO.builder()
+                        .id(e.getId())
+                        .fileName(e.getFileName())
+                        .fileUrl(e.getFileUrl())
+                        .fileType(e.getFileType())
+                        .description(e.getDescription())
+                        .uploadedBy(e.getUploadedBy() != null ? e.getUploadedBy().getFullName() : "Unknown")
+                        .createdAt(e.getCreatedAt())
+                        .build())
+                .collect(java.util.stream.Collectors.toList());
+        
         return DisputeListItemDTO.builder()
                 .id(dispute.getId())
                 .jobId(job.getId())
-                .clientName(job.getClient().getFullName())
-                .workerName(job.getWorker() != null ? job.getWorker().getUser().getFullName() : "Unassigned")
+                .clientId(job.getClient() != null ? job.getClient().getId() : null)
+                .workerId(job.getWorker() != null ? job.getWorker().getUser() != null ? job.getWorker().getUser().getId() : null : null)
+                .clientName(job.getClient() != null ? job.getClient().getFullName() : "Unknown")
+                .workerName(job.getWorker() != null ? job.getWorker().getUser() != null ? job.getWorker().getUser().getFullName() : "Unassigned" : "Unassigned")
+                .filedByName(dispute.getFiledBy() != null ? dispute.getFiledBy().getFullName() : "Unknown")
                 .disputeReasonKey(dispute.getDisputeReasonKey())
-                .priority(dispute.getPriority().toString())
-                .status(dispute.getStatus().toString())
-                .escrowAmount(dispute.getEscrowPayment().getAmount())
+                .disputeDescription(dispute.getDisputeDescription())
+                .priority(dispute.getPriority() != null ? dispute.getPriority().toString() : "MEDIUM")
+                .status(dispute.getStatus() != null ? dispute.getStatus().toString() : "OPEN")
+                .escrowAmount(dispute.getEscrowPayment() != null ? dispute.getEscrowPayment().getAmount() : null)
                 .createdAt(dispute.getCreatedAt())
-                .assignedToAdminName(dispute.getAssignedToAdmin() != null ? 
+                .assignedToAdminName(dispute.getAssignedToAdmin() != null ?
                         dispute.getAssignedToAdmin().getUsername() : "Unassigned")
+                .evidence(evidenceDTOs)
+                .clientEvidence(job.getDisputeEvidence())
+                .workerEvidence(job.getDisputeResponseEvidence())
+                .clientEvidenceAttachmentUrl(job.getDisputeAttachmentUrl())
+                .workerEvidenceAttachmentUrl(job.getDisputeResponseAttachmentUrl())
                 .build();
     }
 

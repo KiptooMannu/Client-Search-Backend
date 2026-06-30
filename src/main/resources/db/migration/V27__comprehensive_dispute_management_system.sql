@@ -226,7 +226,7 @@ BEGIN
         old_value, new_value, additional_data, created_at
     ) VALUES (
         NEW.id,
-        COALESCE(NEW.resolved_by_admin_id, NEW.assigned_to_admin_id),
+        COALESCE(NEW.resolved_by_admin_id, NEW.assigned_to_admin_id, NEW.filed_by_id),
         CASE 
             WHEN OLD IS NULL THEN 'DISPUTE_FILED'
             WHEN OLD.dispute_status != NEW.dispute_status THEN 'STATUS_CHANGED'

@@ -6,6 +6,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.springframework.lang.NonNull;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -25,13 +26,17 @@ public class Notification {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
+    @NonNull
     private User user;
 
+    @NonNull
     private String title;
 
     @Column(columnDefinition = "TEXT")
+    @NonNull
     private String message;
 
+    @NonNull
     private String type; // SUCCESS, INFO, WARNING
 
     @Builder.Default

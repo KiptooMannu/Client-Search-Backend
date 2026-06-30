@@ -2,6 +2,7 @@ package com.kazikonnect.backend.features.worker;
 
 public enum JobStatus {
     NEGOTIATING,        // Price/terms negotiation in progress
+    PENDING,            // Initial request (legacy alias for PENDING_APPLICATION)
     PENDING_APPLICATION,// Initial request
     ACCEPTED,           // Worker accepted (awaiting funding)
     AWAITING_FUNDING,   // Worker accepted, awaiting client escrow funding

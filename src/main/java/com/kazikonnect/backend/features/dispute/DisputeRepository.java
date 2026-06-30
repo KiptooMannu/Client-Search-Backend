@@ -54,6 +54,9 @@ public interface DisputeRepository extends JpaRepository<Dispute, UUID> {
     // Find disputes awaiting evidence
     List<Dispute> findByStatusOrderByEvidenceRequestedAtAsc(DisputeStatus status);
 
+    // Find all disputes ordered by creation date
+    List<Dispute> findAllByOrderByCreatedAtDesc();
+
     // Count disputes by status
     long countByStatusAndCreatedAtAfter(DisputeStatus status, LocalDateTime dateTime);
 }
