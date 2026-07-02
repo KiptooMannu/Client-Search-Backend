@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 
@@ -38,6 +39,7 @@ public class DataInitializer implements CommandLineRunner {
     private String adminPassword;
 
     @Override
+    @Transactional
     public void run(String... args) throws Exception {
         // Drop the status check constraint to allow new statuses (CANCELLED, IN_PROGRESS)
         try {
