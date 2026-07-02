@@ -3,6 +3,8 @@ package com.kazikonnect.backend.features.dispute;
 import com.kazikonnect.backend.features.auth.User;
 import com.kazikonnect.backend.features.auth.UserRepository;
 import com.kazikonnect.backend.features.auth.UserRole;
+import com.kazikonnect.backend.features.common.Message;
+import com.kazikonnect.backend.features.common.MessageRepository;
 import com.kazikonnect.backend.features.common.Notification;
 import com.kazikonnect.backend.features.common.NotificationRepository;
 import com.kazikonnect.backend.features.dispute.dto.*;
@@ -19,6 +21,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,7 +34,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 @Transactional
-@SuppressWarnings({"null"}) 
+@SuppressWarnings({"null"})
 public class DisputeService {
 
     private final DisputeRepository disputeRepository;
@@ -45,6 +48,8 @@ public class DisputeService {
     private final WalletService walletService;
     private final ObjectMapper objectMapper;
     private final NotificationRepository notificationRepository;
+    private final MessageRepository messageMessagingRepository;
+    private final SimpMessagingTemplate messagingTemplate;
 
     // ─────────────────────────────────────────────────────────────────────────
     // FILE DISPUTE
@@ -438,6 +443,13 @@ public class DisputeService {
                 ))
         );
 
+        // Send resolution messages to both parties (temporarily disabled to isolate error)
+        try {
+            sendResolutionMessages(savedDispute, admin, resolutionType, clientAmount, workerAmount);
+        } catch (Exception e) {
+            log.error("Failed to send resolution messages: {}", e.getMessage(), e);
+        }
+
         log.info("Dispute resolved: {}", savedDispute.getId());
         return savedDispute;
     }
@@ -490,6 +502,76 @@ public class DisputeService {
                 "COMPLETED",
                 null
         );
+    }
+
+    /**
+     * Send resolution messages to both parties
+     */
+    private void sendResolutionMessages(Dispute dispute, User admin, ResolutionType resolutionType, Double clientAmount, Double workerAmount) {
+        JobRequest job = dispute.getJobRequest();
+        User client = job.getClient();
+        User worker = job.getWorker().getUser();
+
+        String resolutionMessage = buildResolutionMessage(resolutionType, clientAmount, workerAmount, dispute.getAdminResolutionReason());
+
+        // Send message to client
+        sendSystemMessage(admin, client, resolutionMessage);
+
+        // Send message to worker
+        sendSystemMessage(admin, worker, resolutionMessage);
+
+        log.info("Resolution messages sent to client {} and worker {}", client.getId(), worker.getId());
+    }
+
+    /**
+     * Build resolution message based on type
+     */
+    private String buildResolutionMessage(ResolutionType resolutionType, Double clientAmount, Double workerAmount, String reason) {
+        StringBuilder message = new StringBuilder();
+        message.append("Your dispute has been resolved. ");
+
+        switch (resolutionType) {
+            case FULL_REFUND_TO_CLIENT:
+                message.append("Full refund issued to client. ");
+                break;
+            case FULL_PAYMENT_TO_WORKER:
+                message.append("Full payment released to worker. ");
+                break;
+            case SPLIT:
+                message.append(String.format("Split resolution: Worker receives KES %.2f, Client receives KES %.2f. ", workerAmount, clientAmount));
+                break;
+        }
+
+        if (reason != null && !reason.trim().isEmpty()) {
+            message.append("Reason: ").append(reason);
+        }
+
+        return message.toString();
+    }
+
+    /**
+     * Send a system message from admin to user
+     */
+    private void sendSystemMessage(User admin, User receiver, String content) {
+        try {
+            Message message = new Message();
+            message.setSender(admin);
+            message.setReceiver(receiver);
+            message.setContent(content);
+            message.setAttachmentUrl(null);
+
+            Message saved = messageMessagingRepository.save(message);
+
+            // Send via WebSocket
+            com.kazikonnect.backend.features.common.MessageDTO dto = com.kazikonnect.backend.features.common.MessageDTO.from(saved);
+            messagingTemplate.convertAndSendToUser(
+                    receiver.getId().toString(),
+                    "/queue/messages",
+                    dto
+            );
+        } catch (Exception e) {
+            log.error("Failed to send WebSocket message to user {}: {}", receiver.getId(), e.getMessage());
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────

@@ -3,6 +3,10 @@ package com.kazikonnect.backend.features.worker;
 import com.kazikonnect.backend.features.auth.User;
 import com.kazikonnect.backend.features.auth.UserRepository;
 import com.kazikonnect.backend.features.payment.PaymentService;
+import com.kazikonnect.backend.features.dispute.DisputeRepository;
+import com.kazikonnect.backend.features.dispute.Dispute;
+import com.kazikonnect.backend.features.dispute.ResolutionType;
+import com.kazikonnect.backend.features.dispute.DisputeStatus;
 import com.kazikonnect.backend.features.payment.EscrowPayment;
 import com.kazikonnect.backend.features.payment.EscrowPaymentRepository;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +37,7 @@ public class JobRequestController {
     private final com.kazikonnect.backend.features.common.MessageRepository messageRepository;
     private final PaymentService paymentService;
     private final EscrowPaymentRepository escrowPaymentRepository;
+    private final DisputeRepository disputeRepository;
 
     // READ: Get all job requests (Admin Oversight)
     @GetMapping("/all")
@@ -588,11 +593,13 @@ public class JobRequestController {
     @Transactional
     public ResponseEntity<?> resolveDispute(
             @PathVariable UUID jobId,
-            @RequestParam(required = false) String decisionReason,
-            @RequestParam(required = false) String evidenceNotes,
-            @RequestParam double workerPartialAmount,
-            @RequestParam double clientPartialAmount,
+            @RequestBody Map<String, Object> payload,
             Principal principal) {
+        String decisionReason = (String) payload.get("reason");
+        String evidenceNotes = (String) payload.get("evidenceNotes");
+        Double workerAmount = payload.get("workerAmount") != null ? ((Number) payload.get("workerAmount")).doubleValue() : 0.0;
+        Double clientRefund = payload.get("clientRefund") != null ? ((Number) payload.get("clientRefund")).doubleValue() : 0.0;
+
         return jobRequestRepository.findById(jobId).map(job -> {
             User actor = userRepository.findByUsername(principal.getName()).orElse(null);
             if (actor == null) return ResponseEntity.status(401).body("Unauthorized.");
@@ -601,20 +608,20 @@ public class JobRequestController {
                 return ResponseEntity.badRequest().body("Job is not in DISPUTED status.");
             }
 
-            if (workerPartialAmount < 0 || clientPartialAmount < 0) {
+            if (workerAmount < 0 || clientRefund < 0) {
                 return ResponseEntity.badRequest().body("Amounts cannot be negative.");
             }
 
             try {
-                paymentService.partialRefundEscrow(jobId, workerPartialAmount, clientPartialAmount, decisionReason);
+                paymentService.partialRefundEscrow(jobId, workerAmount, clientRefund, decisionReason);
             } catch (Exception e) {
                 return ResponseEntity.badRequest().body("Failed to process dispute refund: " + e.getMessage());
             }
 
             job.setAdminDecisionReason(decisionReason);
             job.setAdminEvidenceNotes(evidenceNotes);
-            job.setWorkerPartialAmount(workerPartialAmount);
-            job.setClientPartialAmount(clientPartialAmount);
+            job.setWorkerPartialAmount(workerAmount);
+            job.setClientPartialAmount(clientRefund);
             job.setResolvedAt(java.time.LocalDateTime.now());
             job.setStatus(JobStatus.COMPLETED);
 
@@ -625,7 +632,7 @@ public class JobRequestController {
                 notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
                         .user(job.getClient())
                         .title("Dispute Resolved")
-                        .message("Admin has resolved the dispute. Client payout: KES " + clientPartialAmount + ". Reason: " + decisionReason)
+                        .message("Admin has resolved the dispute. Client payout: KES " + clientRefund + ". Reason: " + decisionReason)
                         .type("INFO")
                         .build());
             }
@@ -635,9 +642,37 @@ public class JobRequestController {
                 notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
                         .user(job.getWorker().getUser())
                         .title("Dispute Resolved")
-                        .message("Admin has resolved the dispute. Worker payout: KES " + workerPartialAmount + ". Reason: " + decisionReason)
+                        .message("Admin has resolved the dispute. Worker payout: KES " + workerAmount + ". Reason: " + decisionReason)
                         .type("INFO")
                         .build());
+            }
+
+            // Also update any linked Dispute entity so resolutionType and amounts are recorded
+            try {
+                java.util.Optional<Dispute> disputeOpt = disputeRepository.findByJobRequestId(job.getId());
+                if (disputeOpt.isPresent()) {
+                    Dispute dispute = disputeOpt.get();
+                    ResolutionType resType;
+                    if (workerAmount > 0 && clientRefund == 0) {
+                        resType = ResolutionType.FULL_PAYMENT_TO_WORKER;
+                    } else if (clientRefund > 0 && workerAmount == 0) {
+                        resType = ResolutionType.FULL_REFUND_TO_CLIENT;
+                    } else {
+                        resType = ResolutionType.SPLIT;
+                    }
+
+                    dispute.setResolutionType(resType);
+                    dispute.setClientResolutionAmount(clientRefund);
+                    dispute.setWorkerResolutionAmount(workerAmount);
+                    dispute.setAdminResolutionReason(decisionReason);
+                    dispute.setAdminInternalNotes(evidenceNotes);
+                    dispute.setStatus(DisputeStatus.RESOLVED);
+                    dispute.setResolvedAt(java.time.LocalDateTime.now());
+                    dispute.setResolvedByAdmin(actor);
+                    disputeRepository.save(dispute);
+                }
+            } catch (Exception e) {
+                log.warn("Failed to update Dispute entity for job {}: {}", jobId, e.getMessage());
             }
 
             return ResponseEntity.ok(JobRequestDTO.from(saved));
