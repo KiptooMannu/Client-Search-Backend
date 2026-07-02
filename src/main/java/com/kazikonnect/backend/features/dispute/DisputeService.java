@@ -3,6 +3,8 @@ package com.kazikonnect.backend.features.dispute;
 import com.kazikonnect.backend.features.auth.User;
 import com.kazikonnect.backend.features.auth.UserRepository;
 import com.kazikonnect.backend.features.auth.UserRole;
+import com.kazikonnect.backend.features.common.Notification;
+import com.kazikonnect.backend.features.common.NotificationRepository;
 import com.kazikonnect.backend.features.dispute.dto.*;
 import com.kazikonnect.backend.features.payment.EscrowPayment;
 import com.kazikonnect.backend.features.payment.EscrowPaymentRepository;
@@ -42,6 +44,7 @@ public class DisputeService {
     private final UserRepository userRepository;
     private final WalletService walletService;
     private final ObjectMapper objectMapper;
+    private final NotificationRepository notificationRepository;
 
     // ─────────────────────────────────────────────────────────────────────────
     // FILE DISPUTE
@@ -184,6 +187,49 @@ public class DisputeService {
             evidenceRepository.save(evidenceRecord);
         }
 
+        // Update evidence request status to PROVIDED for pending requests from this user
+        List<DisputeEvidenceRequest> pendingRequests = evidenceRequestRepository
+                .findByDisputeIdAndRequestedFromUserIdAndRequestStatus(
+                        disputeId,
+                        actor.getId(),
+                        EvidenceRequestStatus.PENDING
+                );
+        
+        log.info("Found {} pending evidence requests for user {} on dispute {}", pendingRequests.size(), actor.getId(), disputeId);
+        
+        for (DisputeEvidenceRequest request : pendingRequests) {
+            log.info("Updating evidence request {} from PENDING to PROVIDED", request.getId());
+            request.setRequestStatus(EvidenceRequestStatus.PROVIDED);
+            request.setFulfilledAt(LocalDateTime.now());
+            evidenceRequestRepository.save(request);
+        }
+
+        // Check if all evidence requests for this dispute are now PROVIDED
+        List<DisputeEvidenceRequest> allRequests = evidenceRequestRepository
+                .findByDisputeIdOrderByCreatedAtDesc(disputeId);
+        
+        boolean allRequestsProvided = allRequests.stream()
+                .allMatch(req -> req.getRequestStatus() == EvidenceRequestStatus.PROVIDED 
+                        || req.getRequestStatus() == EvidenceRequestStatus.SATISFIED);
+        
+        // If all requests are fulfilled and dispute is in AWAITING_EVIDENCE status, move to IN_REVIEW
+        if (allRequestsProvided && dispute.getStatus() == DisputeStatus.AWAITING_EVIDENCE) {
+            log.info("All evidence requests fulfilled for dispute {}, changing status from AWAITING_EVIDENCE to IN_REVIEW", disputeId);
+            dispute.setStatus(DisputeStatus.IN_REVIEW);
+            disputeRepository.save(dispute);
+            
+            // Log the status change
+            logAuditAction(
+                    dispute,
+                    actor,
+                    "STATUS_CHANGED",
+                    "Dispute status changed from AWAITING_EVIDENCE to IN_REVIEW",
+                    DisputeStatus.AWAITING_EVIDENCE.toString(),
+                    DisputeStatus.IN_REVIEW.toString(),
+                    null
+            );
+        }
+
         logAuditAction(
                 dispute,
                 actor,
@@ -232,6 +278,14 @@ public class DisputeService {
             dispute.setEvidenceRequestedAt(LocalDateTime.now());
             disputeRepository.save(dispute);
         }
+
+        // Notify the user that evidence is requested
+        notificationRepository.save(Notification.builder()
+                .user(requestedFromUser)
+                .title("Evidence Requested")
+                .message("An admin has requested evidence for your dispute. Please submit the requested evidence by " + savedRequest.getDueDate())
+                .type("WARNING")
+                .build());
 
         logAuditAction(
                 dispute,
@@ -648,6 +702,8 @@ public class DisputeService {
                 .disputeDescription(dispute.getDisputeDescription())
                 .priority(dispute.getPriority())
                 .status(dispute.getStatus())
+                .clientId(job.getClient() != null ? job.getClient().getId() : null)
+                .workerId(job.getWorker() != null && job.getWorker().getUser() != null ? job.getWorker().getUser().getId() : null)
                 .bookingDetail(buildBookingDetailDTO(job))
                 .escrowPaymentDetail(buildEscrowPaymentDetailDTO(payment))
                 .evidence(evidenceRepository.findByDisputeIdOrderByCreatedAtDesc(dispute.getId())
@@ -776,6 +832,7 @@ public class DisputeService {
                 .dueDate(request.getDueDate())
                 .createdAt(request.getCreatedAt())
                 .fulfilledAt(request.getFulfilledAt())
+                .requestedFromUser(buildUserProfileDTO(request.getRequestedFromUser()))
                 .build();
     }
 

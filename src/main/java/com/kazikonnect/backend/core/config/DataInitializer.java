@@ -2,6 +2,7 @@ package com.kazikonnect.backend.core.config;
 
 import com.kazikonnect.backend.features.auth.*;
 import com.kazikonnect.backend.features.common.*;
+import com.kazikonnect.backend.features.dispute.DisputeEvidenceRequestRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,6 +23,7 @@ public class DataInitializer implements CommandLineRunner {
     private final PasswordEncoder passwordEncoder;
     private final org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
     private final NotificationRepository notificationRepository;
+    private final DisputeEvidenceRequestRepository disputeEvidenceRequestRepository;
 
     @Value("${app.data-seed.enabled:true}")
     private boolean shouldSeed;
@@ -73,6 +75,10 @@ public class DataInitializer implements CommandLineRunner {
 
             for (User admin : existingAdmins) {
                 try {
+                    // Delete dispute evidence requests that reference this admin as requested_by_admin_id
+                    disputeEvidenceRequestRepository.deleteByRequestedByAdminId(admin.getId());
+                    log.info("Deleted dispute evidence requests for admin: {}", admin.getEmail());
+
                     // Delete the user - cascade will handle notifications, auth, and other relationships
                     userRepository.delete(admin);
                     log.info("Deleted admin user: {}", admin.getEmail());

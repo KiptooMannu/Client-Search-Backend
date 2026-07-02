@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -72,32 +73,24 @@ public class JobExpirationScheduler {
 
         // Notify client
         if (job.getClient() != null) {
-            @SuppressWarnings("null")
-            var clientUser = job.getClient();
-            Notification clientNotification = Notification.builder()
-                    .user(clientUser)
+            Notification clientNotification = Objects.requireNonNull(Notification.builder()
+                    .user(Objects.requireNonNull(job.getClient()))
                     .title("Job Expired")
                     .message("Your job request has expired due to lack of funding within 48 hours. You can initiate a new hire with the worker.")
                     .type("WARNING")
-                    .build();
-            if (clientNotification != null) {
-                notificationRepository.save(clientNotification);
-            }
+                    .build());
+            notificationRepository.save(clientNotification);
         }
 
         // Notify worker
         if (job.getWorker() != null && job.getWorker().getUser() != null) {
-            @SuppressWarnings("null")
-            var workerUser = job.getWorker().getUser();
-            Notification workerNotification = Notification.builder()
-                    .user(workerUser)
+            Notification workerNotification = Objects.requireNonNull(Notification.builder()
+                    .user(Objects.requireNonNull(job.getWorker().getUser()))
                     .title("Job Expired")
                     .message("The job request has expired due to lack of funding. You are now available for other opportunities.")
                     .type("WARNING")
-                    .build();
-            if (workerNotification != null) {
-                notificationRepository.save(workerNotification);
-            }
+                    .build());
+            notificationRepository.save(workerNotification);
         }
     }
 }

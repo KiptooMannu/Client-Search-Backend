@@ -25,6 +25,15 @@ public interface DisputeEvidenceRequestRepository extends JpaRepository<DisputeE
     // Find pending evidence requests from admin
     List<DisputeEvidenceRequest> findByRequestedByAdminIdAndRequestStatusOrderByCreatedAtDesc(UUID adminId, EvidenceRequestStatus status);
 
+    // Find all evidence requests for a dispute
+    List<DisputeEvidenceRequest> findByDisputeId(UUID disputeId);
+
+    // Find pending evidence requests for a specific dispute and user
+    List<DisputeEvidenceRequest> findByDisputeIdAndRequestedFromUserIdAndRequestStatus(UUID disputeId, UUID userId, EvidenceRequestStatus status);
+
     // Count pending requests for dispute
     long countByDisputeIdAndRequestStatus(UUID disputeId, EvidenceRequestStatus status);
+
+    // Delete evidence requests by admin id
+    void deleteByRequestedByAdminId(UUID adminId);
 }

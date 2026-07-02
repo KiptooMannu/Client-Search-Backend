@@ -2,6 +2,7 @@ package com.kazikonnect.backend.core.exception;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
@@ -202,6 +203,7 @@ public class GlobalExceptionHandler {
     /**
      * Builds a consistent error response with optional validation details.
      */
+    @SuppressWarnings("null")
     private ResponseEntity<?> buildErrorResponse(
             HttpStatus status,
             String error,
@@ -218,7 +220,10 @@ public class GlobalExceptionHandler {
             body.put("validationErrors", validationErrors);
         }
 
-        return new ResponseEntity<>(body, status);
+        return ResponseEntity
+                .status(status)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body);
     }
 }
 

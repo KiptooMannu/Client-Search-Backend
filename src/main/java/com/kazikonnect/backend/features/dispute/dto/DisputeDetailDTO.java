@@ -25,6 +25,8 @@ public class DisputeDetailDTO {
     private String disputeDescription;
     private DisputePriority priority;
     private DisputeStatus status;
+    private UUID clientId;
+    private UUID workerId;
     
     // Booking Details
     private BookingDetailDTO bookingDetail;
