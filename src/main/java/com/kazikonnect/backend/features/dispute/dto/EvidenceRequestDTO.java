@@ -19,5 +19,7 @@ public class EvidenceRequestDTO {
     private LocalDateTime dueDate;
     private LocalDateTime createdAt;
     private LocalDateTime fulfilledAt;
+    private Boolean hiddenFromAdmin;
+    private Boolean hiddenFromUser;
     private UserProfileDTO requestedFromUser;
 }

@@ -204,12 +204,12 @@ public class DisputeService {
             evidenceRequestRepository.save(request);
         }
 
-        // Check if all evidence requests for this dispute are now PROVIDED
+        // Check if all evidence requests for this dispute are now PROVIDED (excluding hidden ones)
         List<DisputeEvidenceRequest> allRequests = evidenceRequestRepository
-                .findByDisputeIdOrderByCreatedAtDesc(disputeId);
-        
+                .findByDisputeIdAndHiddenFromAdminFalseOrderByCreatedAtDesc(disputeId);
+
         boolean allRequestsProvided = allRequests.stream()
-                .allMatch(req -> req.getRequestStatus() == EvidenceRequestStatus.PROVIDED 
+                .allMatch(req -> req.getRequestStatus() == EvidenceRequestStatus.PROVIDED
                         || req.getRequestStatus() == EvidenceRequestStatus.SATISFIED);
         
         // If all requests are fulfilled and dispute is in AWAITING_EVIDENCE status, move to IN_REVIEW
@@ -566,6 +566,33 @@ public class DisputeService {
         return saved;
     }
 
+    /**
+     * Hide evidence request from user view
+     */
+    public void hideEvidenceRequest(UUID requestId, Principal principal) {
+        log.info("Hiding evidence request: {}", requestId);
+
+        User user = getActorFromPrincipal(principal);
+
+        DisputeEvidenceRequest request = evidenceRequestRepository.findById(requestId)
+                .orElseThrow(() -> new RuntimeException("Evidence request not found"));
+
+        // Admins can hide from admin view, users can hide from their own view
+        if (user.getRole() == UserRole.ADMIN) {
+            request.setHiddenFromAdmin(true);
+            log.info("Evidence request {} hidden from admin view by admin", requestId);
+        } else {
+            // Verify the user is the one the request was directed to
+            if (!request.getRequestedFromUser().getId().equals(user.getId())) {
+                throw new RuntimeException("You can only hide evidence requests directed at you");
+            }
+            request.setHiddenFromUser(true);
+            log.info("Evidence request {} hidden from user view by {}", requestId, user.getUsername());
+        }
+
+        evidenceRequestRepository.save(request);
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // RETRIEVE DISPUTE DATA
     // ─────────────────────────────────────────────────────────────────────────
@@ -580,12 +607,13 @@ public class DisputeService {
                 .orElseThrow(() -> new RuntimeException("Dispute not found"));
 
         // Verify access
+        User user = null;
         if (principal != null) {
-            User user = getActorFromPrincipal(principal);
+            user = getActorFromPrincipal(principal);
             verifyDisputeAccess(dispute, user);
         }
 
-        return buildDisputeDetailDTO(dispute);
+        return buildDisputeDetailDTO(dispute, user);
     }
 
     /**
@@ -627,7 +655,7 @@ public class DisputeService {
         User user = getActorFromPrincipal(principal);
         return disputeRepository.findDisputesInvolvingUser(user.getId())
                 .stream()
-                .map(this::buildDisputeDetailDTO)
+                .map(dispute -> buildDisputeDetailDTO(dispute, user))
                 .collect(Collectors.toList());
     }
 
@@ -686,9 +714,22 @@ public class DisputeService {
     // DTO BUILDERS
     // ─────────────────────────────────────────────────────────────────────────
 
-    private DisputeDetailDTO buildDisputeDetailDTO(Dispute dispute) {
+    private DisputeDetailDTO buildDisputeDetailDTO(Dispute dispute, User user) {
         JobRequest job = dispute.getJobRequest();
         EscrowPayment payment = dispute.getEscrowPayment();
+
+        // Filter evidence requests based on user role
+        List<DisputeEvidenceRequest> evidenceRequests;
+        if (user != null && user.getRole() == UserRole.ADMIN) {
+            // Admins see requests not hidden from admin
+            evidenceRequests = evidenceRequestRepository.findByDisputeIdAndHiddenFromAdminFalseOrderByCreatedAtDesc(dispute.getId());
+        } else if (user != null) {
+            // Clients/workers see all dispute requests not hidden from user
+            evidenceRequests = evidenceRequestRepository.findByDisputeIdAndHiddenFromUserFalseOrderByCreatedAtDesc(dispute.getId());
+        } else {
+            // No user context, show all requests not hidden from user
+            evidenceRequests = evidenceRequestRepository.findByDisputeIdAndHiddenFromUserFalseOrderByCreatedAtDesc(dispute.getId());
+        }
 
         return DisputeDetailDTO.builder()
                 .id(dispute.getId())
@@ -710,8 +751,7 @@ public class DisputeService {
                         .stream()
                         .map(this::buildEvidenceDetailDTO)
                         .collect(Collectors.toList()))
-                .evidenceRequests(evidenceRequestRepository.findByDisputeIdOrderByCreatedAtDesc(dispute.getId())
-                        .stream()
+                .evidenceRequests(evidenceRequests.stream()
                         .map(this::buildEvidenceRequestDTO)
                         .collect(Collectors.toList()))
                 .messages(messageRepository.findByDisputeIdAndIsAdminOnlyFalseOrderByCreatedAtAsc(dispute.getId())
@@ -722,16 +762,16 @@ public class DisputeService {
                         .stream()
                         .map(this::buildAuditTrailDTO)
                         .collect(Collectors.toList()))
-                .resolutionType(dispute.getResolutionType() != null ? 
+                .resolutionType(dispute.getResolutionType() != null ?
                         dispute.getResolutionType().toString() : null)
                 .clientResolutionAmount(dispute.getClientResolutionAmount())
                 .workerResolutionAmount(dispute.getWorkerResolutionAmount())
                 .adminResolutionReason(dispute.getAdminResolutionReason())
                 .resolvedAt(dispute.getResolvedAt())
-                .resolvedByAdminName(dispute.getResolvedByAdmin() != null ? 
+                .resolvedByAdminName(dispute.getResolvedByAdmin() != null ?
                         dispute.getResolvedByAdmin().getUsername() : null)
                 .clientProfile(buildUserProfileDTO(job.getClient()))
-                .workerProfile(job.getWorker() != null ? 
+                .workerProfile(job.getWorker() != null ?
                         buildUserProfileDTO(job.getWorker().getUser()) : null)
                 .build();
     }
@@ -832,6 +872,8 @@ public class DisputeService {
                 .dueDate(request.getDueDate())
                 .createdAt(request.getCreatedAt())
                 .fulfilledAt(request.getFulfilledAt())
+                .hiddenFromAdmin(request.getHiddenFromAdmin())
+                .hiddenFromUser(request.getHiddenFromUser())
                 .requestedFromUser(buildUserProfileDTO(request.getRequestedFromUser()))
                 .build();
     }

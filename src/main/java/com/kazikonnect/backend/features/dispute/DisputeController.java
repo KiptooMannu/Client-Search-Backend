@@ -237,6 +237,25 @@ public class DisputeController {
         ));
     }
 
+    /**
+     * Hide evidence request from user view
+     * PUT /api/disputes/evidence-requests/{requestId}/hide
+     */
+    @PutMapping("/evidence-requests/{requestId}/hide")
+    @PreAuthorize("hasAuthority('Admin') or hasAuthority('Client') or hasAuthority('Worker')")
+    public ResponseEntity<Map<String, String>> hideEvidenceRequest(
+            @PathVariable UUID requestId,
+            Principal principal) {
+        log.info("Hiding evidence request: {} by user: {}", requestId, principal.getName());
+        
+        disputeService.hideEvidenceRequest(requestId, principal);
+        
+        return ResponseEntity.ok(Map.of(
+                "status", "SUCCESS",
+                "message", "Evidence request hidden from view"
+        ));
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // RETRIEVE DISPUTE DATA
     // ─────────────────────────────────────────────────────────────────────────

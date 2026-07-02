@@ -47,8 +47,8 @@ public interface DisputeRepository extends JpaRepository<Dispute, UUID> {
     // Find disputes filed by user
     List<Dispute> findByFiledByIdOrderByCreatedAtDesc(UUID userId);
 
-    // Find disputes involving user (filed by or assigned worker)
-    @Query("SELECT d FROM Dispute d WHERE d.filedBy.id = :userId OR d.jobRequest.worker.user.id = :userId ORDER BY d.createdAt DESC")
+    // Find disputes involving user (filed by, client, or worker)
+    @Query("SELECT d FROM Dispute d WHERE d.filedBy.id = :userId OR d.jobRequest.client.id = :userId OR d.jobRequest.worker.user.id = :userId ORDER BY d.createdAt DESC")
     List<Dispute> findDisputesInvolvingUser(@Param("userId") UUID userId);
 
     // Find disputes awaiting evidence

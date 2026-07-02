@@ -36,4 +36,13 @@ public interface DisputeEvidenceRequestRepository extends JpaRepository<DisputeE
 
     // Delete evidence requests by admin id
     void deleteByRequestedByAdminId(UUID adminId);
+
+    // Find evidence requests not hidden from admin
+    List<DisputeEvidenceRequest> findByDisputeIdAndHiddenFromAdminFalseOrderByCreatedAtDesc(UUID disputeId);
+
+    // Find evidence requests not hidden from user
+    List<DisputeEvidenceRequest> findByDisputeIdAndHiddenFromUserFalseOrderByCreatedAtDesc(UUID disputeId);
+
+    // Find evidence requests directed at a specific user and not hidden from user
+    List<DisputeEvidenceRequest> findByDisputeIdAndRequestedFromUserIdAndHiddenFromUserFalseOrderByCreatedAtDesc(UUID disputeId, UUID userId);
 }

@@ -60,6 +60,14 @@ public class DisputeEvidenceRequest {
     @Column(name = "fulfilled_at")
     private LocalDateTime fulfilledAt;
 
+    @Builder.Default
+    @Column(name = "hidden_from_admin")
+    private Boolean hiddenFromAdmin = false;
+
+    @Builder.Default
+    @Column(name = "hidden_from_user")
+    private Boolean hiddenFromUser = false;
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
