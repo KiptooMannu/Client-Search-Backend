@@ -57,6 +57,10 @@ public class PaymentService {
             throw new RuntimeException("Forbidden: you are not permitted to pay for this job.");
         }
 
+        if (job.getStatus() == JobStatus.EXPIRED) {
+            throw new RuntimeException("Cannot initiate payment: this job has expired due to lack of funding. Please create a new job request to continue.");
+        }
+
         // Use negotiated price if set, otherwise use total cost
         Double amount = Optional.ofNullable(job.getNegotiatedPrice()).orElse(job.getTotalCost());
         if (amount == null || amount <= 0) {
