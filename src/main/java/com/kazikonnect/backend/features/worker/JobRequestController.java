@@ -91,6 +91,8 @@ public class JobRequestController {
         Double offerPrice = jobRequest.getJobPrice();
         if (offerPrice != null && offerPrice > 0) {
             jobRequest.setTotalCost(offerPrice);
+            // Store as clientCounterOffer to show worker that client sent an offer price
+            jobRequest.setClientCounterOffer(offerPrice);
         } else {
             jobRequest.setTotalCost(worker.getHourlyRate());
         }
@@ -218,7 +220,7 @@ public class JobRequestController {
                 return ResponseEntity.badRequest().body("Counter-offer price must be greater than 0.");
             }
 
-            job.setNegotiatedPrice(counterPrice);
+            job.setClientCounterOffer(counterPrice);
 
             // Notify worker about client's counter-offer
             if (job.getWorker() != null && job.getWorker().getUser() != null) {
@@ -251,7 +253,7 @@ public class JobRequestController {
                 return ResponseEntity.status(403).body("Forbidden: Only the assigned worker can reject a counter-offer.");
             }
 
-            if (job.getNegotiatedPrice() == null) {
+            if (job.getClientCounterOffer() == null && job.getNegotiatedPrice() == null) {
                 return ResponseEntity.badRequest().body("No counter-offer to reject.");
             }
 
@@ -259,8 +261,9 @@ public class JobRequestController {
                 return ResponseEntity.badRequest().body("Counter-offers can only be rejected for pending jobs.");
             }
 
-            // Clear the negotiated price
-            Double rejectedPrice = job.getNegotiatedPrice();
+            // Clear the counter-offer (could be from client or worker)
+            Double rejectedPrice = job.getClientCounterOffer() != null ? job.getClientCounterOffer() : job.getNegotiatedPrice();
+            job.setClientCounterOffer(null);
             job.setNegotiatedPrice(null);
 
             // Notify client about rejection
@@ -701,13 +704,13 @@ public class JobRequestController {
         }).orElse(ResponseEntity.notFound().build());
     }
 
-    // PUT: Client cancels hire (before funding)
-    @PutMapping("/{jobId}/cancel")
+    // PUT/POST: Client cancels hire (before funding)
+    @RequestMapping(value = "/{jobId}/cancel", method = {RequestMethod.PUT, RequestMethod.POST})
     @PreAuthorize("hasAuthority('Client')")
     @Transactional
     public ResponseEntity<?> cancelHire(
             @PathVariable UUID jobId,
-            @RequestBody Map<String, String> payload,
+            @RequestBody(required = false) Map<String, String> payload,
             Principal principal) {
         return jobRequestRepository.findById(jobId).map(job -> {
             User actor = userRepository.findByUsername(principal.getName()).orElse(null);
@@ -717,6 +720,8 @@ public class JobRequestController {
             if (!job.getClient().getId().equals(actor.getId())) {
                 return ResponseEntity.status(403).body("Forbidden: Only the client can cancel the hire.");
             }
+
+            Map<String, String> requestPayload = payload == null ? java.util.Collections.emptyMap() : payload;
 
             // Can only cancel if job is in ACCEPTED or AWAITING_FUNDING status and not funded
             if (job.getStatus() != JobStatus.ACCEPTED && job.getStatus() != JobStatus.AWAITING_FUNDING) {
@@ -728,9 +733,9 @@ public class JobRequestController {
             }
 
             job.setStatus(JobStatus.CLIENT_CANCELLED);
-            job.setCancellationReason(payload.get("cancellationReason"));
-            job.setCancelledBy(parseCancelledBy(payload.get("cancelledBy")));
-            job.setCancelledAt(parseDateTime(payload.get("cancelledAt")));
+            job.setCancellationReason(requestPayload.get("cancellationReason"));
+            job.setCancelledBy(parseCancelledBy(requestPayload.get("cancelledBy")));
+            job.setCancelledAt(parseDateTime(requestPayload.get("cancelledAt")));
 
             JobRequest saved = jobRequestRepository.save(job);
 
@@ -739,7 +744,7 @@ public class JobRequestController {
                 notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
                         .user(job.getWorker().getUser())
                         .title("Hire Cancelled")
-                        .message(job.getClient().getFullName() + " has cancelled the hire. Reason: " + payload.get("cancellationReason"))
+                        .message(job.getClient().getFullName() + " has cancelled the hire. Reason: " + requestPayload.get("cancellationReason"))
                         .type("INFO")
                         .build());
             }
@@ -748,13 +753,13 @@ public class JobRequestController {
         }).orElse(ResponseEntity.notFound().build());
     }
 
-    // PUT: Worker withdraws acceptance (before funding)
-    @PutMapping("/{jobId}/withdraw")
+    // PUT/POST: Worker withdraws acceptance (before funding)
+    @RequestMapping(value = "/{jobId}/withdraw", method = {RequestMethod.PUT, RequestMethod.POST})
     @PreAuthorize("hasAuthority('Worker')")
     @Transactional
     public ResponseEntity<?> withdrawAcceptance(
             @PathVariable UUID jobId,
-            @RequestBody Map<String, String> payload,
+            @RequestBody(required = false) Map<String, String> payload,
             Principal principal) {
         return jobRequestRepository.findById(jobId).map(job -> {
             User actor = userRepository.findByUsername(principal.getName()).orElse(null);
@@ -766,6 +771,8 @@ public class JobRequestController {
                 return ResponseEntity.status(403).body("Forbidden: Only the assigned worker can withdraw acceptance.");
             }
 
+            Map<String, String> requestPayload = payload == null ? java.util.Collections.emptyMap() : payload;
+
             // Can only withdraw if job is in ACCEPTED or AWAITING_FUNDING status and not funded
             if (job.getStatus() != JobStatus.ACCEPTED && job.getStatus() != JobStatus.AWAITING_FUNDING) {
                 return ResponseEntity.badRequest().body("Acceptance can only be withdrawn before funding.");
@@ -776,9 +783,9 @@ public class JobRequestController {
             }
 
             job.setStatus(JobStatus.WORKER_CANCELLED);
-            job.setCancellationReason(payload.get("cancellationReason"));
-            job.setCancelledBy(parseCancelledBy(payload.get("cancelledBy")));
-            job.setCancelledAt(parseDateTime(payload.get("cancelledAt")));
+            job.setCancellationReason(requestPayload.get("cancellationReason"));
+            job.setCancelledBy(parseCancelledBy(requestPayload.get("cancelledBy")));
+            job.setCancelledAt(parseDateTime(requestPayload.get("cancelledAt")));
 
             JobRequest saved = jobRequestRepository.save(job);
 
@@ -787,7 +794,7 @@ public class JobRequestController {
                 notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
                         .user(job.getClient())
                         .title("Worker Withdrew Acceptance")
-                        .message(job.getWorker().getFullName() + " has withdrawn their acceptance. Reason: " + payload.get("cancellationReason"))
+                        .message(job.getWorker().getFullName() + " has withdrawn their acceptance. Reason: " + requestPayload.get("cancellationReason"))
                         .type("INFO")
                         .build());
             }

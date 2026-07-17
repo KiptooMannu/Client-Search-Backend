@@ -57,6 +57,10 @@ public class JobRequest {
     @Column(name = "negotiated_price", precision = 14, scale = 2)
     private Double negotiatedPrice;
 
+    @JdbcTypeCode(Types.NUMERIC)
+    @Column(name = "client_counter_offer", precision = 14, scale = 2)
+    private Double clientCounterOffer;
+
     @Column(name = "required_experience")
     private Integer requiredExperience;
 
