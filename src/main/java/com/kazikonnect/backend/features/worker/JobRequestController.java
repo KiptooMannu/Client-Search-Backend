@@ -723,13 +723,14 @@ public class JobRequestController {
 
             Map<String, String> requestPayload = payload == null ? java.util.Collections.emptyMap() : payload;
 
-            // Can only cancel if job is in ACCEPTED or AWAITING_FUNDING status and not funded
+            // Can only cancel if job is in ACCEPTED or AWAITING_FUNDING status
             if (job.getStatus() != JobStatus.ACCEPTED && job.getStatus() != JobStatus.AWAITING_FUNDING) {
                 return ResponseEntity.badRequest().body("Job can only be cancelled before funding.");
             }
 
+            // Block cancellation after escrow is funded to prevent abuse
             if (job.getEscrowFunded()) {
-                return ResponseEntity.badRequest().body("Cannot cancel hire after escrow has been funded.");
+                return ResponseEntity.badRequest().body("Cannot cancel after escrow is funded. Work is now in progress.");
             }
 
             job.setStatus(JobStatus.CLIENT_CANCELLED);
@@ -773,13 +774,14 @@ public class JobRequestController {
 
             Map<String, String> requestPayload = payload == null ? java.util.Collections.emptyMap() : payload;
 
-            // Can only withdraw if job is in ACCEPTED or AWAITING_FUNDING status and not funded
+            // Can only withdraw if job is in ACCEPTED or AWAITING_FUNDING status
             if (job.getStatus() != JobStatus.ACCEPTED && job.getStatus() != JobStatus.AWAITING_FUNDING) {
                 return ResponseEntity.badRequest().body("Acceptance can only be withdrawn before funding.");
             }
 
+            // Block withdrawal after escrow is funded to prevent abuse
             if (job.getEscrowFunded()) {
-                return ResponseEntity.badRequest().body("Cannot withdraw acceptance after escrow has been funded.");
+                return ResponseEntity.badRequest().body("Cannot withdraw after escrow is funded. Work is now in progress.");
             }
 
             job.setStatus(JobStatus.WORKER_CANCELLED);
