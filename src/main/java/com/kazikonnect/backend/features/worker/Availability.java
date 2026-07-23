@@ -13,12 +13,12 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class Availability {
-    @Column(name = "weekdays")
+    @Column(name = "availability_weekdays")
     private boolean weekdays;
 
-    @Column(name = "weekends")
+    @Column(name = "availability_weekends")
     private boolean weekends;
 
-    @Column(name = "evenings")
+    @Column(name = "availability_evenings")
     private boolean evenings;
 }
