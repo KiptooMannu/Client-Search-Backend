@@ -17,4 +17,6 @@ public interface JobRequestRepository extends JpaRepository<JobRequest, UUID> {
            "AND j.escrowFunded = false " +
            "AND j.createdAt < :expiryThreshold")
     List<JobRequest> findExpiredJobs(@Param("expiryThreshold") LocalDateTime expiryThreshold);
+
+    List<JobRequest> findAllByCreatedAtBetween(LocalDateTime startDate, LocalDateTime endDate);
 }

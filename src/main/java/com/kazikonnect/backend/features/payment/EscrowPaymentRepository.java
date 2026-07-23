@@ -45,4 +45,6 @@ public interface EscrowPaymentRepository extends JpaRepository<EscrowPayment, UU
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT e FROM EscrowPayment e WHERE e.b2cConversationId = :conversationId")
     Optional<EscrowPayment> findByB2cConversationIdForUpdate(@Param("conversationId") String conversationId);
+
+    List<EscrowPayment> findAllByCreatedAtBetween(LocalDateTime startDate, LocalDateTime endDate);
 }

@@ -69,6 +69,17 @@ public class DataInitializer implements CommandLineRunner {
 
     // ─── Admin Seeding ──────────────────────────────────────────────────────────
     private void seedAdmin() {
+        // Check if users table exists
+        Integer tableExists = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'users'",
+            Integer.class
+        );
+
+        if (tableExists == null || tableExists == 0) {
+            log.warn("Users table does not exist yet. Skipping admin seeding - Flyway migrations may not have completed.");
+            return;
+        }
+
         // Delete all existing admins and their related records first
         List<User> existingAdmins = userRepository.findAllByRole(UserRole.ADMIN);
 
