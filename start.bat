@@ -13,25 +13,18 @@ if "!DB_MODE!"=="h2" (
 	echo [H2 Mode] Starting with in-memory H2 database...
 	set MAVEN_PROFILE=-Ph2
 ) else (
-	echo [Neon Mode] Starting with cloud PostgreSQL database...
+	echo [PostgreSQL Mode] Starting with cloud PostgreSQL database...
 	set MAVEN_PROFILE=
 )
 
 :: Load .env if present (skip comments and empty lines)
-:: Fixed: assign via intermediate "key"/"val" vars and expand with ! ! (delayed
-:: expansion) inside a fully quoted set statement. This makes set treat
-:: characters like & | < > ^ in values as literal text instead of letting
-:: cmd.exe parse them as command separators/redirection.
 if exist "%~dp0.env" (
-	echo Loading environment variables from .env file...
-	for /f "usebackq tokens=1* delims==" %%A in ("%~dp0.env") do (
-		set "key=%%A"
-		set "val=%%B"
-		if not "!key!"=="" if not "!key:~0,1!"=="#" (
-			set "!key!=!val!"
-			echo   - Loaded: !key!
-		)
-	)
+    echo Loading environment variables from .env file...
+    for /f "usebackq tokens=1* delims==" %%A in ('findstr /v /b "#" "%~dp0.env"') do (
+        setlocal DISABLEDELAYEDEXPANSION
+        endlocal & set "%%A=%%B"
+        echo   - Loaded: %%A
+    )
 )
 
 set JAVA_HOME=C:\Program Files\Eclipse Adoptium\jdk-25.0.2.10-hotspot
@@ -41,7 +34,7 @@ if "!DB_MODE!"=="h2" (
 	echo URL: jdbc:h2:mem:testdb
 	echo Console: http://localhost:8080/h2-console
 ) else (
-	echo Database: Neon PostgreSQL (Cloud)
+	echo Database: PostgreSQL (Cloud)
 	echo URL: !DB_URL!
 )
 echo.
