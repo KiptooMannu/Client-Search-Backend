@@ -19,20 +19,20 @@ public class PlatformFeeWithdrawalController {
     private final PlatformFeeWithdrawalService withdrawalService;
 
     @GetMapping("/balance")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('Admin')")
     public ResponseEntity<Map<String, Object>> getPlatformFeeBalance() {
         return ResponseEntity.ok(withdrawalService.getPlatformFeeBalance());
     }
 
     @PostMapping("/withdraw")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('Admin')")
     public ResponseEntity<PlatformFeeWithdrawal> requestWithdrawal(
             @Valid @RequestBody WithdrawalRequest request) {
         return ResponseEntity.ok(withdrawalService.requestWithdrawal(request));
     }
 
     @GetMapping("/withdrawals")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('Admin')")
     public ResponseEntity<List<PlatformFeeWithdrawal>> getWithdrawalHistory(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
@@ -40,7 +40,7 @@ public class PlatformFeeWithdrawalController {
     }
 
     @GetMapping("/withdrawals/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('Admin')")
     public ResponseEntity<PlatformFeeWithdrawal> getWithdrawalById(@PathVariable UUID id) {
         return withdrawalService.getWithdrawalById(id)
                 .map(ResponseEntity::ok)
@@ -48,7 +48,7 @@ public class PlatformFeeWithdrawalController {
     }
 
     @PostMapping("/withdrawals/{id}/cancel")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('Admin')")
     public ResponseEntity<PlatformFeeWithdrawal> cancelWithdrawal(@PathVariable UUID id) {
         return ResponseEntity.ok(withdrawalService.cancelWithdrawal(id));
     }

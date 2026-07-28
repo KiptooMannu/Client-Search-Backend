@@ -4,7 +4,7 @@ import com.kazikonnect.backend.features.auth.User;
 import com.kazikonnect.backend.features.auth.UserRepository;
 import com.kazikonnect.backend.features.auth.UserRole;
 import com.kazikonnect.backend.features.common.Notification;
-import com.kazikonnect.backend.features.common.NotificationRepository;
+import com.kazikonnect.backend.features.common.NotificationService;
 import com.kazikonnect.backend.features.worker.JobRequest;
 import com.kazikonnect.backend.features.wallet.WithdrawalRequest;
 import com.kazikonnect.backend.features.wallet.WithdrawalRequestRepository;
@@ -32,7 +32,7 @@ public class B2cPayoutService {
     private final EscrowPaymentRepository escrowPaymentRepository;
     private final PaymentAuditLogRepository paymentAuditLogRepository;
     private final UserRepository userRepository;
-    private final NotificationRepository notificationRepository;
+    private final NotificationService notificationService;
     private final PhoneValidationService phoneValidationService;
     private final WithdrawalRequestRepository withdrawalRequestRepository;
     private final WalletService walletService;
@@ -497,7 +497,7 @@ public class B2cPayoutService {
                 .createdAt(LocalDateTime.now())
                 .build();
 
-            notificationRepository.save(notification);
+            notificationService.dispatch(notification);
 
             saveAuditLog(payment, "B2C_ESCALATED_TO_ADMIN",
                 "B2C timeout escalated to admin",
@@ -528,7 +528,7 @@ public class B2cPayoutService {
                 .createdAt(LocalDateTime.now())
                 .build();
 
-            notificationRepository.save(notification);
+            notificationService.dispatch(notification);
 
         } catch (Exception e) {
             LOGGER.error("Failed to notify worker of payout: {}", e.getMessage());
@@ -552,7 +552,7 @@ public class B2cPayoutService {
                 .createdAt(LocalDateTime.now())
                 .build();
 
-            notificationRepository.save(notification);
+            notificationService.dispatch(notification);
 
         } catch (Exception e) {
             LOGGER.error("Failed to notify worker of payout success: {}", e.getMessage());

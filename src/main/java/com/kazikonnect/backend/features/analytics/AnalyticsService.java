@@ -1,5 +1,8 @@
 package com.kazikonnect.backend.features.analytics;
 
+import com.kazikonnect.backend.features.auth.User;
+import com.kazikonnect.backend.features.auth.UserRepository;
+import com.kazikonnect.backend.features.auth.UserRole;
 import com.kazikonnect.backend.features.payment.EscrowPayment;
 import com.kazikonnect.backend.features.payment.EscrowPaymentRepository;
 import com.kazikonnect.backend.features.payment.EscrowPaymentStatus;
@@ -20,6 +23,7 @@ public class AnalyticsService {
 
     private final EscrowPaymentRepository escrowPaymentRepository;
     private final JobRequestRepository jobRequestRepository;
+    private final UserRepository userRepository;
 
     private static final DateTimeFormatter MONTH_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM");
 
@@ -34,7 +38,7 @@ public class AnalyticsService {
                     List<EscrowPayment> monthPayments = entry.getValue();
                     double revenue = monthPayments.stream()
                             .filter(p -> p.getStatus() == EscrowPaymentStatus.RELEASED)
-                            .mapToDouble(EscrowPayment::getAmount)
+                            .mapToDouble(p -> p.getAmount())
                             .sum();
                     double platformFees = monthPayments.stream()
                             .filter(p -> p.getStatus() == EscrowPaymentStatus.RELEASED)
@@ -52,17 +56,34 @@ public class AnalyticsService {
                             .workerPayouts(workerPayouts)
                             .build();
                 })
-                .sorted(Comparator.comparing(RevenueData::getPeriod))
+                .sorted(Comparator.comparing(r -> r.getPeriod()))
                 .collect(Collectors.toList());
     }
 
     public UserGrowthData getUserGrowthData(LocalDateTime startDate, LocalDateTime endDate) {
-        // This would need user repositories - for now returning placeholder
+        List<User> allUsers = userRepository.findAll();
+        
+        long newClients = allUsers.stream()
+                .filter(u -> u.getRole() == UserRole.CLIENT)
+                .filter(u -> u.getCreatedAt() != null && 
+                             (u.getCreatedAt().isAfter(startDate) || u.getCreatedAt().isEqual(startDate)) && 
+                             u.getCreatedAt().isBefore(endDate))
+                .count();
+        
+        long newWorkers = allUsers.stream()
+                .filter(u -> u.getRole() == UserRole.WORKER)
+                .filter(u -> u.getCreatedAt() != null && 
+                             (u.getCreatedAt().isAfter(startDate) || u.getCreatedAt().isEqual(startDate)) && 
+                             u.getCreatedAt().isBefore(endDate))
+                .count();
+        
+        long totalUsers = allUsers.size();
+        
         return UserGrowthData.builder()
                 .period(startDate.format(MONTH_FORMATTER) + " to " + endDate.format(MONTH_FORMATTER))
-                .newClients(0)
-                .newWorkers(0)
-                .totalUsers(0)
+                .newClients((int) newClients)
+                .newWorkers((int) newWorkers)
+                .totalUsers((int) totalUsers)
                 .build();
     }
 
@@ -121,7 +142,7 @@ public class AnalyticsService {
 
         double totalRevenue = recentPayments.stream()
                 .filter(p -> p.getStatus() == EscrowPaymentStatus.RELEASED)
-                .mapToDouble(EscrowPayment::getAmount)
+                .mapToDouble(p -> p.getAmount())
                 .sum();
 
         double totalPlatformFees = recentPayments.stream()
@@ -144,14 +165,69 @@ public class AnalyticsService {
     }
 
     public List<ClientSpendingData> getClientSpendingData(String clientId, LocalDateTime startDate, LocalDateTime endDate) {
-        // This would need client-specific payment tracking
-        // For now returning placeholder
-        return Collections.emptyList();
+        try {
+            UUID client = UUID.fromString(clientId);
+            List<EscrowPayment> payments = escrowPaymentRepository.findAllByCreatedAtBetween(startDate, endDate)
+                    .stream()
+                    .filter(p -> p.getJobRequest() != null
+                            && p.getJobRequest().getClient() != null
+                            && client.equals(p.getJobRequest().getClient().getId()))
+                    .toList();
+
+            Map<String, List<EscrowPayment>> groupedByMonth = payments.stream()
+                    .collect(Collectors.groupingBy(p -> p.getCreatedAt().format(MONTH_FORMATTER)));
+
+            return groupedByMonth.entrySet().stream()
+                    .map((Map.Entry<String, List<EscrowPayment>> entry) -> {
+                        List<EscrowPayment> monthPayments = entry.getValue();
+                        double totalSpent = monthPayments.stream()
+                                .filter(p -> p.getStatus() == EscrowPaymentStatus.RELEASED)
+                                .mapToDouble(p -> p.getAmount() != null ? p.getAmount() : 0)
+                                .sum();
+
+                        return ClientSpendingData.builder()
+                                .period(entry.getKey())
+                                .amount(totalSpent)
+                                .build();
+                    })
+                    .sorted(Comparator.comparing(d -> d.getPeriod()))
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            return Collections.emptyList();
+        }
     }
 
     public List<WorkerEarningsData> getWorkerEarningsData(String workerId, LocalDateTime startDate, LocalDateTime endDate) {
-        // This would need worker-specific payment tracking
-        // For now returning placeholder
-        return Collections.emptyList();
+        try {
+            UUID worker = UUID.fromString(workerId);
+            List<EscrowPayment> payments = escrowPaymentRepository.findAllByCreatedAtBetween(startDate, endDate)
+                    .stream()
+                    .filter(p -> p.getJobRequest() != null
+                            && p.getJobRequest().getWorker() != null
+                            && worker.equals(p.getJobRequest().getWorker().getId()))
+                    .toList();
+
+            Map<String, List<EscrowPayment>> groupedByMonth = payments.stream()
+                    .collect(Collectors.groupingBy(p -> p.getCreatedAt().format(MONTH_FORMATTER)));
+
+            return groupedByMonth.entrySet().stream()
+                    .map((Map.Entry<String, List<EscrowPayment>> entry) -> {
+                        List<EscrowPayment> monthPayments = entry.getValue();
+                        double totalEarnings = monthPayments.stream()
+                                .filter(p -> p.getStatus() == EscrowPaymentStatus.RELEASED)
+                                .mapToDouble(p -> p.getWorkerAmount() != null ? p.getWorkerAmount() : 0)
+                                .sum();
+
+                        return WorkerEarningsData.builder()
+                                .period(entry.getKey())
+                                .earnings(totalEarnings)
+                                .jobsCompleted(monthPayments.size())
+                                .build();
+                    })
+                    .sorted(Comparator.comparing(d -> d.getPeriod()))
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            return Collections.emptyList();
+        }
     }
 }

@@ -12,6 +12,7 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -73,7 +74,7 @@ public class PlatformFeeWithdrawalService {
                 .requestedAt(LocalDateTime.now())
                 .build();
 
-        return withdrawalRepository.save(withdrawal);
+        return withdrawalRepository.save(Objects.requireNonNull(withdrawal));
     }
 
     public List<PlatformFeeWithdrawal> getWithdrawalHistory(int page, int size) {
@@ -90,7 +91,7 @@ public class PlatformFeeWithdrawalService {
     }
 
     public PlatformFeeWithdrawal cancelWithdrawal(UUID id) {
-        PlatformFeeWithdrawal withdrawal = withdrawalRepository.findById(id)
+        PlatformFeeWithdrawal withdrawal = withdrawalRepository.findById(Objects.requireNonNull(id))
                 .orElseThrow(() -> new IllegalArgumentException("Withdrawal not found"));
         
         if (withdrawal.getStatus() != WithdrawalStatus.PENDING) {
@@ -105,6 +106,6 @@ public class PlatformFeeWithdrawalService {
     }
 
     public java.util.Optional<PlatformFeeWithdrawal> getWithdrawalById(UUID id) {
-        return withdrawalRepository.findById(id);
+        return withdrawalRepository.findById(Objects.requireNonNull(id));
     }
 }

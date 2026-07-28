@@ -15,6 +15,7 @@ public class MarketplaceController {
 
     private final WorkerProfileRepository workerProfileRepository;
     private final SkillRepository skillRepository;
+    private final JobRequestRepository jobRequestRepository;
 
     // READ: Get all available skills
     @GetMapping("/skills")
@@ -37,7 +38,10 @@ public class MarketplaceController {
 
         org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size);
         return workerProfileRepository.advancedSearchPaged(WorkerStatus.APPROVED, skill, location, minExp, pageable)
-                .map(MarketplaceWorkerDTO::from);
+                .map(profile -> {
+                    long completedJobs = jobRequestRepository.countCompletedJobsByWorkerId(profile.getUser() != null ? profile.getUser().getId() : null);
+                    return MarketplaceWorkerDTO.from(profile, (int) completedJobs);
+                });
     }
 
     // READ: Get a single worker's public profile (for client to view)

@@ -1,7 +1,7 @@
 package com.kazikonnect.backend.features.worker;
 
 import com.kazikonnect.backend.features.common.Notification;
-import com.kazikonnect.backend.features.common.NotificationRepository;
+import com.kazikonnect.backend.features.common.NotificationService;
 import com.kazikonnect.backend.features.auth.UserRole;
 import com.kazikonnect.backend.features.auth.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -23,7 +23,7 @@ public class WorkerController {
     private final WorkHistoryRepository workHistoryRepository;
     private final CertificationRepository certificationRepository;
     private final com.kazikonnect.backend.core.services.CloudinaryService cloudinaryService;
-    private final NotificationRepository notificationRepository;
+    private final NotificationService notificationService;
 
     // CREATE: Submit a new worker profile (updates existing if already present)
     @PostMapping("/profile")
@@ -183,6 +183,8 @@ public class WorkerController {
                 }
 
                 if (updates.workHistory() != null) {
+                    workHistoryRepository.deleteAllByWorkerId(existing.getId());
+                    workHistoryRepository.flush();
                     existing.getWorkHistory().clear();
                     for (WorkHistoryDTO dto : updates.workHistory()) {
                         WorkHistory wh = WorkHistory.builder()
@@ -197,6 +199,8 @@ public class WorkerController {
                 }
 
                 if (updates.certifications() != null) {
+                    certificationRepository.deleteAllByWorkerId(existing.getId());
+                    certificationRepository.flush();
                     existing.getCertifications().clear();
                     for (CertificationCreateDTO dto : updates.certifications()) {
                         Certification cert = Certification.builder()
@@ -287,7 +291,7 @@ public class WorkerController {
             
             // Notify Admins
             userRepository.findAllByRole(UserRole.ADMIN).forEach(admin -> {
-                notificationRepository.save(Notification.builder()
+                notificationService.dispatch(Notification.builder()
                     .user(admin)
                     .title("New Verification Request")
                     .message("Worker " + (saved.getFullName() != null ? saved.getFullName() : actor.getUsername()) + " has submitted their profile for verification.")

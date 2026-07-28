@@ -6,11 +6,14 @@ import com.kazikonnect.backend.features.auth.UserRole;
 import com.kazikonnect.backend.features.common.Message;
 import com.kazikonnect.backend.features.common.MessageRepository;
 import com.kazikonnect.backend.features.common.Notification;
-import com.kazikonnect.backend.features.common.NotificationRepository;
+import com.kazikonnect.backend.features.common.NotificationService;
 import com.kazikonnect.backend.features.dispute.dto.*;
 import com.kazikonnect.backend.features.payment.EscrowPayment;
 import com.kazikonnect.backend.features.payment.EscrowPaymentRepository;
 import com.kazikonnect.backend.features.payment.EscrowPaymentStatus;
+import com.kazikonnect.backend.features.platformwallet.PlatformWalletService;
+import com.kazikonnect.backend.features.settlementwallet.SettlementTransactionType;
+import com.kazikonnect.backend.features.settlementwallet.SettlementWalletService;
 import com.kazikonnect.backend.features.wallet.WalletService;
 import com.kazikonnect.backend.features.worker.JobRequest;
 import com.kazikonnect.backend.features.worker.JobRequestRepository;
@@ -18,6 +21,7 @@ import com.kazikonnect.backend.features.worker.JobStatus;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
@@ -46,10 +50,15 @@ public class DisputeService {
     private final EscrowPaymentRepository escrowPaymentRepository;
     private final UserRepository userRepository;
     private final WalletService walletService;
+    private final PlatformWalletService platformWalletService;
+    private final SettlementWalletService settlementWalletService;
     private final ObjectMapper objectMapper;
-    private final NotificationRepository notificationRepository;
+    private final NotificationService notificationService;
     private final MessageRepository messageMessagingRepository;
     private final SimpMessagingTemplate messagingTemplate;
+
+    @Value("${payment.platform-fee-percent:10.0}")
+    private double platformFeePercent;
 
     // ─────────────────────────────────────────────────────────────────────────
     // FILE DISPUTE
@@ -285,7 +294,7 @@ public class DisputeService {
         }
 
         // Notify the user that evidence is requested
-        notificationRepository.save(Notification.builder()
+        notificationService.dispatch(Notification.builder()
                 .user(requestedFromUser)
                 .title("Evidence Requested")
                 .message("An admin has requested evidence for your dispute. Please submit the requested evidence by " + savedRequest.getDueDate())
@@ -461,23 +470,53 @@ public class DisputeService {
         JobRequest job = dispute.getJobRequest();
         EscrowPayment payment = dispute.getEscrowPayment();
 
-        // Refund to client
+        // Refund to client (using settlement wallet)
         if (clientAmount > 0) {
-            walletService.creditWallet(
-                    job.getClient(),
-                    clientAmount,
-                    "Dispute resolution refund for job " + job.getId()
-            );
+            try {
+                settlementWalletService.creditWallet(
+                        job.getClient(),
+                        clientAmount,
+                        SettlementTransactionType.DISPUTE_AWARD,
+                        job.getId(),
+                        payment.getId(),
+                        "Dispute resolution refund for job " + job.getId()
+                );
+                log.info("Settlement wallet credited with dispute award: KES {} for job {}", clientAmount, job.getId());
+            } catch (Exception settlementEx) {
+                log.error("Failed to credit settlement wallet for dispute resolution job {}: {}", job.getId(), settlementEx.getMessage());
+            }
             payment.setStatus(EscrowPaymentStatus.REFUNDED);
         }
 
-        // Payment to worker
+        // Payment to worker (with platform fee deduction)
         if (workerAmount > 0) {
+            double fee = calculatePlatformFee(workerAmount);
+            double workerNet = workerAmount - fee;
+
             walletService.creditWallet(
                     job.getWorker().getUser(),
-                    workerAmount,
+                    workerNet,
                     "Dispute resolution payment for job " + job.getId()
             );
+
+            // Credit platform wallet with platform fee
+            try {
+                platformWalletService.creditPlatformRevenue(
+                        job.getId(),
+                        payment.getId(),
+                        job.getClient(),
+                        job.getWorker().getUser(),
+                        workerAmount,
+                        platformFeePercent,
+                        fee,
+                        workerNet,
+                        "Platform fee from dispute resolution for job " + job.getId()
+                );
+                log.info("Platform wallet credited with fee from dispute resolution: KES {} for job {}", fee, job.getId());
+            } catch (Exception platformEx) {
+                log.error("Failed to credit platform wallet for dispute resolution job {}: {}", job.getId(), platformEx.getMessage());
+            }
+
             payment.setStatus(EscrowPaymentStatus.RELEASED);
         }
 
@@ -502,6 +541,10 @@ public class DisputeService {
                 "COMPLETED",
                 null
         );
+    }
+
+    private double calculatePlatformFee(double amount) {
+        return amount * (platformFeePercent / 100.0);
     }
 
     /**

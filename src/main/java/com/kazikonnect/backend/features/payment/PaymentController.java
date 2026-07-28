@@ -25,6 +25,28 @@ public class PaymentController {
     public record StkPushRequest(UUID jobId, String phoneNumber) {
     }
 
+    public record WalletPayRequest(UUID jobId, boolean useWallet, String phoneNumber) {
+    }
+
+    @PostMapping("/wallet/pay")
+    @PreAuthorize("hasAuthority('Client') or hasAuthority('Admin')")
+    public ResponseEntity<?> payWithWallet(
+            @RequestBody WalletPayRequest request,
+            Principal principal) {
+        try {
+            log.info("Processing wallet payment for job: {} by user: {}", request.jobId(), principal.getName());
+            PaymentService.PaymentWalletResponse response = paymentService.payWithWallet(
+                    request.jobId(), request.useWallet(), request.phoneNumber(), principal);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Wallet payment failed: {}", e.getMessage(), e);
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", e.getMessage());
+            errorResponse.put("status", "FAILED");
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
+
     @PostMapping("/mpesa/stkpush")
     @PreAuthorize("hasAuthority('Client') or hasAuthority('Admin')")
     public ResponseEntity<?> initiateStkPush(

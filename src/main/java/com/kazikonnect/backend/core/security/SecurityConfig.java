@@ -53,6 +53,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/marketplace/search").permitAll()
                         .requestMatchers("/api/marketplace/**").permitAll()
                         .requestMatchers("/api/reviews/worker/**").permitAll()
+                        // Aggregate counts and approved reviews for the marketing landing page.
+                        .requestMatchers("/api/public/**").permitAll()
                         .requestMatchers(
                                 "/api/notifications", "/api/notifications/**",
                                 "/api/messages", "/api/messages/**",

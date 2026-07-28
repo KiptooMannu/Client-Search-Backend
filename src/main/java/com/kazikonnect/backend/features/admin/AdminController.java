@@ -14,7 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import com.kazikonnect.backend.features.common.Notification;
-import com.kazikonnect.backend.features.common.NotificationRepository;
+import com.kazikonnect.backend.features.common.NotificationService;
 import com.kazikonnect.backend.features.common.Message;
 import com.kazikonnect.backend.features.common.MessageRepository;
 import java.time.LocalDateTime;
@@ -33,7 +33,7 @@ public class AdminController {
     private final AuthRepository authRepository;
     private final ClientProfileRepository clientProfileRepository;
     private final AdminLogRepository adminLogRepository;
-    private final NotificationRepository notificationRepository;
+    private final NotificationService notificationService;
     private final MessageRepository messageRepository;
 
     // ==================== WORKER MANAGEMENT ====================
@@ -89,7 +89,7 @@ public class AdminController {
                 .build());
 
         // Notify Worker
-        notificationRepository.save(Notification.builder()
+        notificationService.dispatch(Notification.builder()
                 .user(worker.getUser())
                 .title("Profile Approved! 🎉")
                 .message("Congratulations! Your profile has been verified and is now live on the platform.")
@@ -124,7 +124,7 @@ public class AdminController {
                 .build());
 
         // Notify Worker
-        notificationRepository.save(Notification.builder()
+        notificationService.dispatch(Notification.builder()
                 .user(worker.getUser())
                 .title("Verification Update")
                 .message("Your profile verification was unsuccessful. Reason: " + reason)
@@ -253,7 +253,7 @@ public class AdminController {
         authRepository.save(auth);
 
         // Notify User
-        notificationRepository.save(Notification.builder()
+        notificationService.dispatch(Notification.builder()
                 .user(userRepository.findById(id).orElse(null))
                 .title("Account Suspended")
                 .message("Your account has been suspended by an administrator. Please contact support.")

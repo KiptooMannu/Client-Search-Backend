@@ -33,7 +33,7 @@ public class JobRequestController {
     private final JobRequestRepository jobRequestRepository;
     private final UserRepository userRepository;
     private final WorkerProfileRepository workerProfileRepository;
-    private final com.kazikonnect.backend.features.common.NotificationRepository notificationRepository;
+    private final com.kazikonnect.backend.features.common.NotificationService notificationService;
     private final com.kazikonnect.backend.features.common.MessageRepository messageRepository;
     private final PaymentService paymentService;
     private final EscrowPaymentRepository escrowPaymentRepository;
@@ -101,7 +101,7 @@ public class JobRequestController {
 
         // Create notification for worker about new job offer
         if (worker.getUser() != null) {
-            notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+            notificationService.dispatch(com.kazikonnect.backend.features.common.Notification.builder()
                     .user(worker.getUser())
                     .title("📢 New Job Offer")
                     .message(client.getFullName() + " has sent you a job offer for " + jobRequest.getDescription() + ". Budget: KES " + jobRequest.getTotalCost())
@@ -141,7 +141,7 @@ public class JobRequestController {
 
             // Notify client about counter-offer
             if (job.getClient() != null) {
-                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                notificationService.dispatch(com.kazikonnect.backend.features.common.Notification.builder()
                         .user(job.getClient())
                         .title("💰 Counter-Offer Received")
                         .message(job.getWorker().getFullName() + " has submitted a counter-offer of KES " + counterPrice + " for your job request.")
@@ -183,7 +183,7 @@ public class JobRequestController {
 
             // Notify worker about acceptance
             if (job.getWorker() != null && job.getWorker().getUser() != null) {
-                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                notificationService.dispatch(com.kazikonnect.backend.features.common.Notification.builder()
                         .user(job.getWorker().getUser())
                         .title("✅ Counter-Offer Accepted")
                         .message(job.getClient().getFullName() + " has accepted your counter-offer of KES " + job.getNegotiatedPrice() + ". You can now accept the job.")
@@ -224,7 +224,7 @@ public class JobRequestController {
 
             // Notify worker about client's counter-offer
             if (job.getWorker() != null && job.getWorker().getUser() != null) {
-                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                notificationService.dispatch(com.kazikonnect.backend.features.common.Notification.builder()
                         .user(job.getWorker().getUser())
                         .title("💰 Counter-Offer from Client")
                         .message(job.getClient().getFullName() + " has submitted a counter-offer of KES " + counterPrice + " for your job request.")
@@ -268,7 +268,7 @@ public class JobRequestController {
 
             // Notify client about rejection
             if (job.getClient() != null) {
-                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                notificationService.dispatch(com.kazikonnect.backend.features.common.Notification.builder()
                         .user(job.getClient())
                         .title("❌ Counter-Offer Rejected")
                         .message(job.getWorker().getFullName() + " has rejected your counter-offer of KES " + rejectedPrice + ". You can submit a new offer.")
@@ -365,7 +365,7 @@ public class JobRequestController {
                             String clientName = updatedJob.getClient() != null ? updatedJob.getClient().getFullName() : "Client";
                             String workerName = safeWorkerName(updatedJob.getWorker());
 
-                            notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                            notificationService.dispatch(com.kazikonnect.backend.features.common.Notification.builder()
                                     .user(updatedJob.getWorker().getUser())
                                     .title("Work Approved & Payment Released!")
                                     .message(clientName + " has approved your work. Payment is now available in your wallet.")
@@ -403,7 +403,7 @@ public class JobRequestController {
                     job.setTotalCost(job.getNegotiatedPrice());
                     
                     // Notify client about negotiated price acceptance
-                    notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                    notificationService.dispatch(com.kazikonnect.backend.features.common.Notification.builder()
                             .user(job.getClient())
                             .title("✅ Negotiated Price Accepted")
                             .message(job.getWorker().getFullName() + " has accepted your counter-offer of KES " + job.getNegotiatedPrice() + ". The job price is now updated.")
@@ -411,7 +411,7 @@ public class JobRequestController {
                             .build());
                 }
                 
-                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                notificationService.dispatch(com.kazikonnect.backend.features.common.Notification.builder()
                         .user(job.getClient())
                         .title("Job Accepted — Payment Required!")
                         .message(job.getWorker().getFullName()
@@ -431,17 +431,31 @@ public class JobRequestController {
 
             // LOGIC: If worker REJECTS the job
             if (targetStatus == JobStatus.REJECTED && workerOwner && oldStatus != JobStatus.REJECTED) {
-                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                try {
+                    paymentService.refundEscrow(job.getId(), principal);
+                } catch (Exception refundEx) {
+                    log.info("No active escrow payment to refund for rejected job {}", job.getId());
+                }
+                notificationService.dispatch(com.kazikonnect.backend.features.common.Notification.builder()
                         .user(job.getClient())
                         .title("Job Declined")
-                        .message(job.getWorker().getFullName() + " is unable to take your job request at this time.")
+                        .message(job.getWorker().getFullName() + " is unable to take your job request at this time. Any funded escrow has been refunded to your wallet.")
                         .type("INFO")
                         .build());
             }
 
+            // LOGIC: If job is CANCELLED
+            if (targetStatus == JobStatus.CANCELLED && oldStatus != JobStatus.CANCELLED) {
+                try {
+                    paymentService.refundEscrow(job.getId(), principal);
+                } catch (Exception refundEx) {
+                    log.info("No active escrow payment to refund for cancelled job {}", job.getId());
+                }
+            }
+
             // LOGIC: If worker starts work (IN_PROGRESS)
             if (targetStatus == JobStatus.IN_PROGRESS && workerOwner && oldStatus != JobStatus.IN_PROGRESS) {
-                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                notificationService.dispatch(com.kazikonnect.backend.features.common.Notification.builder()
                         .user(job.getClient())
                         .title("Work Started")
                         .message(job.getWorker().getFullName() + " has started working on your project.")
@@ -452,7 +466,7 @@ public class JobRequestController {
             // LOGIC: If worker marks as SUBMITTED (Work Delivered)
             if (targetStatus == JobStatus.SUBMITTED && workerOwner && oldStatus != JobStatus.SUBMITTED) {
                 // 1. Notification to Client
-                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                notificationService.dispatch(com.kazikonnect.backend.features.common.Notification.builder()
                         .user(job.getClient())
                         .title("Work Delivered!")
                         .message(job.getWorker().getFullName()
@@ -473,7 +487,7 @@ public class JobRequestController {
             // LOGIC: If client requests REVISION
             if (targetStatus == JobStatus.REVISION_REQUESTED && clientOwner
                     && oldStatus != JobStatus.REVISION_REQUESTED) {
-                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                notificationService.dispatch(com.kazikonnect.backend.features.common.Notification.builder()
                         .user(job.getWorker().getUser())
                         .title("Revision Requested")
                         .message(job.getClient().getFullName() + " has requested changes to the submitted work.")
@@ -483,7 +497,7 @@ public class JobRequestController {
 
             // LOGIC: If client opens a DISPUTE
             if (targetStatus == JobStatus.DISPUTED && clientOwner && oldStatus != JobStatus.DISPUTED) {
-                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                notificationService.dispatch(com.kazikonnect.backend.features.common.Notification.builder()
                         .user(job.getWorker().getUser())
                         .title("Dispute Opened")
                         .message(job.getClient().getFullName() + " has opened a dispute regarding this job.")
@@ -496,7 +510,7 @@ public class JobRequestController {
                 paymentService.refundEscrowBySystem(jobId, "Payment refunded due to job cancellation.");
 
                 User recipient = clientOwner ? job.getWorker().getUser() : job.getClient();
-                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                notificationService.dispatch(com.kazikonnect.backend.features.common.Notification.builder()
                         .user(recipient)
                         .title("Job Cancelled")
                         .message("The job request has been cancelled by the " + (clientOwner ? "client" : "worker")
@@ -539,7 +553,7 @@ public class JobRequestController {
 
             JobRequest saved = jobRequestRepository.save(job);
 
-            notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+            notificationService.dispatch(com.kazikonnect.backend.features.common.Notification.builder()
                     .user(job.getWorker().getUser())
                     .title("Dispute Opened")
                     .message(job.getClient().getFullName() + " has opened a dispute regarding this job: " + reason)
@@ -579,7 +593,7 @@ public class JobRequestController {
 
             JobRequest saved = jobRequestRepository.save(job);
 
-            notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+            notificationService.dispatch(com.kazikonnect.backend.features.common.Notification.builder()
                     .user(job.getClient())
                     .title("Dispute Response Received")
                     .message(job.getWorker().getFullName() + " has responded to your dispute.")
@@ -632,7 +646,7 @@ public class JobRequestController {
 
             // Notify client
             if (job.getClient() != null) {
-                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                notificationService.dispatch(com.kazikonnect.backend.features.common.Notification.builder()
                         .user(job.getClient())
                         .title("Dispute Resolved")
                         .message("Admin has resolved the dispute. Client payout: KES " + clientRefund + ". Reason: " + decisionReason)
@@ -642,7 +656,7 @@ public class JobRequestController {
 
             // Notify worker
             if (job.getWorker() != null && job.getWorker().getUser() != null) {
-                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                notificationService.dispatch(com.kazikonnect.backend.features.common.Notification.builder()
                         .user(job.getWorker().getUser())
                         .title("Dispute Resolved")
                         .message("Admin has resolved the dispute. Worker payout: KES " + workerAmount + ". Reason: " + decisionReason)
@@ -742,7 +756,7 @@ public class JobRequestController {
 
             // Notify worker about cancellation
             if (job.getWorker() != null && job.getWorker().getUser() != null) {
-                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                notificationService.dispatch(com.kazikonnect.backend.features.common.Notification.builder()
                         .user(job.getWorker().getUser())
                         .title("Hire Cancelled")
                         .message(job.getClient().getFullName() + " has cancelled the hire. Reason: " + requestPayload.get("cancellationReason"))
@@ -793,7 +807,7 @@ public class JobRequestController {
 
             // Notify client about withdrawal
             if (job.getClient() != null) {
-                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                notificationService.dispatch(com.kazikonnect.backend.features.common.Notification.builder()
                         .user(job.getClient())
                         .title("Worker Withdrew Acceptance")
                         .message(job.getWorker().getFullName() + " has withdrawn their acceptance. Reason: " + requestPayload.get("cancellationReason"))
@@ -830,7 +844,7 @@ public class JobRequestController {
 
             // Notify both client and worker about expiry
             if (job.getClient() != null) {
-                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                notificationService.dispatch(com.kazikonnect.backend.features.common.Notification.builder()
                         .user(job.getClient())
                         .title("Job Expired")
                         .message("The job has expired due to lack of funding within the allowed time period.")
@@ -839,7 +853,7 @@ public class JobRequestController {
             }
 
             if (job.getWorker() != null && job.getWorker().getUser() != null) {
-                notificationRepository.save(com.kazikonnect.backend.features.common.Notification.builder()
+                notificationService.dispatch(com.kazikonnect.backend.features.common.Notification.builder()
                         .user(job.getWorker().getUser())
                         .title("Job Expired")
                         .message("The job has expired due to lack of funding within the allowed time period.")

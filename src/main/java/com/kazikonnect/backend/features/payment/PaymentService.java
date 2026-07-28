@@ -3,6 +3,9 @@ package com.kazikonnect.backend.features.payment;
 import com.kazikonnect.backend.features.auth.User;
 import com.kazikonnect.backend.features.auth.UserRepository;
 import com.kazikonnect.backend.features.auth.UserRole;
+import com.kazikonnect.backend.features.platformwallet.PlatformWalletService;
+import com.kazikonnect.backend.features.settlementwallet.SettlementTransactionType;
+import com.kazikonnect.backend.features.settlementwallet.SettlementWalletService;
 import com.kazikonnect.backend.features.wallet.WalletService;
 import com.kazikonnect.backend.features.worker.JobRequest;
 import com.kazikonnect.backend.features.worker.JobRequestRepository;
@@ -40,6 +43,8 @@ public class PaymentService {
     private final WebhookProcessedLogRepository webhookProcessedLogRepository;
     private final PaymentAuditLogRepository paymentAuditLogRepository;
     private final WalletService walletService;
+    private final PlatformWalletService platformWalletService;
+    private final SettlementWalletService settlementWalletService;
     private final MpesaService mpesaService;
     private final PhoneValidationService phoneValidationService;
 
@@ -378,6 +383,24 @@ public class PaymentService {
         walletService.creditWallet(job.getWorker().getUser(), workerNet,
                 "Payment release for job " + jobId);
 
+        // Credit platform wallet with platform fee
+        try {
+            platformWalletService.creditPlatformRevenue(
+                    job.getId(),
+                    payment.getId(),
+                    job.getClient(),
+                    job.getWorker().getUser(),
+                    paymentAmount,
+                    platformFeePercent,
+                    fee,
+                    workerNet,
+                    "Platform fee from escrow release for job " + jobId
+            );
+            LOGGER.info("Platform wallet credited with fee: KES {} for job {}", fee, jobId);
+        } catch (Exception platformEx) {
+            LOGGER.error("Failed to credit platform wallet for job {}: {}", jobId, platformEx.getMessage());
+        }
+
         try {
             saveAuditLog(payment, "PAYMENT_RELEASED", principal, "Payment released to worker", null);
         } catch (Exception auditEx) {
@@ -417,11 +440,22 @@ public class PaymentService {
         // Update job status to CANCELLED (payment was refunded, job won't proceed)
         job.setStatus(JobStatus.CANCELLED);
         jobRequestRepository.save(job);
-        
-        // Credit client's wallet with refund amount
+
+        // Credit client's settlement wallet with refund amount
         if (job.getClient() != null && payment.getAmount() > 0) {
-            walletService.creditWallet(job.getClient(), payment.getAmount(),
-                    "Escrow refund for job " + jobId);
+            try {
+                settlementWalletService.creditWallet(
+                        job.getClient(),
+                        payment.getAmount(),
+                        SettlementTransactionType.REFUND,
+                        job.getId(),
+                        payment.getId(),
+                        "Escrow refund for job " + jobId
+                );
+                LOGGER.info("Settlement wallet credited with refund: KES {} for job {}", payment.getAmount(), jobId);
+            } catch (Exception settlementEx) {
+                LOGGER.error("Failed to credit settlement wallet for job {}: {}", jobId, settlementEx.getMessage());
+            }
         }
         
         saveAuditLog(payment, "PAYMENT_REFUNDED", principal, "Refund requested by actor", null);
@@ -513,10 +547,21 @@ public class PaymentService {
             jobRequestRepository.save(job);
         }
 
-        // Credit client's wallet
+        // Credit client's settlement wallet
         if (payment.getJobRequest() != null && payment.getJobRequest().getClient() != null && payment.getAmount() > 0) {
-            walletService.creditWallet(payment.getJobRequest().getClient(), payment.getAmount(),
-                    "Refund for job " + jobId + ": " + (reason != null ? reason : "Payment refunded by system."));
+            try {
+                settlementWalletService.creditWallet(
+                        payment.getJobRequest().getClient(),
+                        payment.getAmount(),
+                        SettlementTransactionType.ESCROW_CANCELLATION,
+                        jobId,
+                        payment.getId(),
+                        "System refund for job " + jobId + ": " + (reason != null ? reason : "Payment refunded by system.")
+                );
+                LOGGER.info("Settlement wallet credited with system refund: KES {} for job {}", payment.getAmount(), jobId);
+            } catch (Exception settlementEx) {
+                LOGGER.error("Failed to credit settlement wallet for job {}: {}", jobId, settlementEx.getMessage());
+            }
         }
     }
 
@@ -569,10 +614,39 @@ public class PaymentService {
                     "Partial dispute payout for job " + jobId);
         }
 
-        // Credit client wallet
+        // Credit platform wallet with platform fee
+        try {
+            platformWalletService.creditPlatformRevenue(
+                    job.getId(),
+                    paymentOpt.isPresent() ? paymentOpt.get().getId() : null,
+                    job.getClient(),
+                    job.getWorker().getUser(),
+                    workerAmount + clientRefund,
+                    platformFeePercent,
+                    fee,
+                    netWorkerAmount,
+                    "Platform fee from partial settlement for job " + jobId
+            );
+            LOGGER.info("Platform wallet credited with fee from partial settlement: KES {} for job {}", fee, jobId);
+        } catch (Exception platformEx) {
+            LOGGER.error("Failed to credit platform wallet for partial settlement job {}: {}", jobId, platformEx.getMessage());
+        }
+
+        // Credit client settlement wallet
         if (job.getClient() != null && clientRefund > 0) {
-            walletService.creditWallet(job.getClient(), clientRefund,
-                    "Partial dispute refund for job " + jobId);
+            try {
+                settlementWalletService.creditWallet(
+                        job.getClient(),
+                        clientRefund,
+                        SettlementTransactionType.PARTIAL_REFUND,
+                        job.getId(),
+                        paymentOpt.isPresent() ? paymentOpt.get().getId() : null,
+                        "Partial dispute refund for job " + jobId
+                );
+                LOGGER.info("Settlement wallet credited with partial refund: KES {} for job {}", clientRefund, jobId);
+            } catch (Exception settlementEx) {
+                LOGGER.error("Failed to credit settlement wallet for partial settlement job {}: {}", jobId, settlementEx.getMessage());
+            }
         }
     }
 
@@ -1199,4 +1273,109 @@ public class PaymentService {
             LOGGER.error("Error in processMpesaB2cTimeout: {}", e.getMessage(), e);
         }
     }
+
+    /**
+     * Pay for a job using Client Settlement Wallet balance (full or split payment with M-Pesa)
+     */
+    @Transactional
+    public PaymentWalletResponse payWithWallet(UUID jobId, boolean useWallet, String phoneNumber, Principal principal) {
+        User actor = getActor(principal);
+        JobRequest job = jobRequestRepository.findById(jobId)
+                .orElseThrow(() -> new RuntimeException("Job not found."));
+
+        if (actor.getRole() == UserRole.CLIENT && !job.getClient().getId().equals(actor.getId())) {
+            throw new RuntimeException("Forbidden: you are not permitted to pay for this job.");
+        }
+
+        if (job.getStatus() == JobStatus.EXPIRED) {
+            throw new RuntimeException("Cannot initiate payment: this job has expired due to lack of funding.");
+        }
+
+        Double totalAmount = Optional.ofNullable(job.getNegotiatedPrice()).orElse(job.getTotalCost());
+        if (totalAmount == null || totalAmount <= 0) {
+            throw new RuntimeException("Invalid job amount.");
+        }
+
+        var wallet = settlementWalletService.getWallet(actor);
+        double availableBalance = wallet.getAvailableBalance() != null ? wallet.getAvailableBalance() : 0.0;
+
+        if (wallet.getIsFrozen() != null && wallet.getIsFrozen()) {
+            throw new RuntimeException("Wallet is frozen: " + (wallet.getFreezeReason() != null ? wallet.getFreezeReason() : "Contact support."));
+        }
+
+        if (!useWallet || availableBalance <= 0) {
+            if (phoneNumber == null || phoneNumber.isBlank()) {
+                throw new RuntimeException("Phone number is required for M-Pesa payment.");
+            }
+            StkPushResponse push = initiateStkPush(jobId, phoneNumber, principal);
+            return new PaymentWalletResponse("PENDING_MPESA", 0.0, totalAmount, push.checkoutRequestId(), "STK push initiated for full amount.");
+        }
+
+        if (availableBalance >= totalAmount) {
+            settlementWalletService.debitWallet(actor, totalAmount, jobId, "Full payment from wallet for job " + jobId);
+
+            EscrowPayment payment = escrowPaymentRepository.findTopByJobRequestIdOrderByCreatedAtDesc(jobId)
+                    .orElse(EscrowPayment.builder()
+                            .jobRequest(job)
+                            .amount(totalAmount)
+                            .phoneNumber("WALLET")
+                            .build());
+
+            payment.setAmount(totalAmount);
+            payment.setStatus(EscrowPaymentStatus.SUCCESS);
+            payment.setMessage("Payment completed via client wallet balance.");
+            payment.setMpesaReceiptNumber("WLT-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
+            payment.setTransactionDate(LocalDateTime.now());
+            payment.setUpdatedAt(LocalDateTime.now());
+            escrowPaymentRepository.save(payment);
+
+            if (job.getStatus() == JobStatus.PENDING || job.getStatus() == JobStatus.ACCEPTED) {
+                job.setStatus(JobStatus.FUNDED);
+                jobRequestRepository.save(job);
+            }
+
+            return new PaymentWalletResponse("SUCCESS", totalAmount, 0.0, null, "Payment successfully completed using your wallet balance.");
+        } else {
+            if (phoneNumber == null || phoneNumber.isBlank()) {
+                throw new RuntimeException("Phone number is required for the remaining M-Pesa payment.");
+            }
+
+            double walletDeduction = availableBalance;
+            double remainingMpesa = totalAmount - walletDeduction;
+
+            settlementWalletService.debitWallet(actor, walletDeduction, jobId, "Partial payment from wallet for job " + jobId);
+
+            String normalizedPhone = mpesaService.normalizePhoneNumber(phoneNumber);
+            StkPushResponse pushResponse = mpesaService.initiateStkPush(
+                    normalizedPhone, remainingMpesa, jobId.toString(),
+                    "Partial M-Pesa payment for job " + jobId
+            );
+
+            EscrowPayment payment = escrowPaymentRepository.findTopByJobRequestIdOrderByCreatedAtDesc(jobId)
+                    .orElse(EscrowPayment.builder()
+                            .jobRequest(job)
+                            .amount(totalAmount)
+                            .build());
+
+            payment.setAmount(totalAmount);
+            payment.setStatus(EscrowPaymentStatus.PENDING);
+            payment.setPhoneNumber(normalizedPhone);
+            payment.setCheckoutRequestId(pushResponse.checkoutRequestId());
+            payment.setIdempotencyKey(pushResponse.checkoutRequestId());
+            payment.setMessage("Partial wallet payment KES " + walletDeduction + ". Awaiting STK push for remaining KES " + remainingMpesa);
+            payment.setTimeoutAt(LocalDateTime.now().plusMinutes(15));
+            payment.setUpdatedAt(LocalDateTime.now());
+            escrowPaymentRepository.save(payment);
+
+            return new PaymentWalletResponse("PENDING_MPESA", walletDeduction, remainingMpesa, pushResponse.checkoutRequestId(), "KES " + walletDeduction + " paid from wallet. Please complete STK push for remaining KES " + remainingMpesa);
+        }
+    }
+
+    public record PaymentWalletResponse(
+            String status,
+            Double paidViaWallet,
+            Double paidViaMpesa,
+            String checkoutRequestId,
+            String message
+    ) {}
 }

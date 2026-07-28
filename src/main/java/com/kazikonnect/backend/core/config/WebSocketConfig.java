@@ -26,14 +26,16 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry config) {
-        // Enable a simple memory-based message broker to carry the messages back to the client
-        // on destinations prefixed with /topic or /queue
-        config.enableSimpleBroker("/topic", "/queue", "/user");
-        
-        // Designate the /app prefix for messages that are bound for methods annotated with @MessageMapping
+        // Simple in-memory broker for broadcast (/topic) and point-to-point (/queue).
+        // "/user" is deliberately NOT a broker prefix: user destinations are rewritten by
+        // Spring's UserDestinationMessageHandler into /queue/**-user{sessionId} before the
+        // broker sees them, so listing it here only registers a second, dead subscription.
+        config.enableSimpleBroker("/topic", "/queue");
+
+        // Designate the /app prefix for messages bound for @MessageMapping methods
         config.setApplicationDestinationPrefixes("/app");
-        
-        // For one-to-one messaging
+
+        // Resolves "/user/**" against the authenticated principal set by JwtChannelInterceptor
         config.setUserDestinationPrefix("/user");
     }
 

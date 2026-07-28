@@ -1,7 +1,7 @@
 package com.kazikonnect.backend.features.worker;
 
 import com.kazikonnect.backend.features.common.Notification;
-import com.kazikonnect.backend.features.common.NotificationRepository;
+import com.kazikonnect.backend.features.common.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -24,7 +24,7 @@ import java.util.UUID;
 public class JobExpirationScheduler {
 
     private final JobRequestRepository jobRequestRepository;
-    private final NotificationRepository notificationRepository;
+    private final NotificationService notificationService;
 
     private static final int EXPIRY_HOURS = 48; // Configurable expiry period in hours
 
@@ -79,7 +79,7 @@ public class JobExpirationScheduler {
                     .message("Your job request has expired due to lack of funding within 48 hours. You can initiate a new hire with the worker.")
                     .type("WARNING")
                     .build());
-            notificationRepository.save(clientNotification);
+            notificationService.dispatch(clientNotification);
         }
 
         // Notify worker
@@ -90,7 +90,7 @@ public class JobExpirationScheduler {
                     .message("The job request has expired due to lack of funding. You are now available for other opportunities.")
                     .type("WARNING")
                     .build());
-            notificationRepository.save(workerNotification);
+            notificationService.dispatch(workerNotification);
         }
     }
 }

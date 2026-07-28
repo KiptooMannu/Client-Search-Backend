@@ -3,6 +3,8 @@ package com.kazikonnect.backend.features.payment;
 import com.kazikonnect.backend.features.worker.JobRequest;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import java.sql.Types;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -36,6 +38,7 @@ public class EscrowPayment {
     @Column(nullable = false)
     private EscrowPaymentStatus status;
 
+    @JdbcTypeCode(Types.NUMERIC)
     @Column(name = "amount", nullable = false)
     private Double amount;
 
@@ -57,9 +60,11 @@ public class EscrowPayment {
     @Column(name = "transaction_date")
     private LocalDateTime transactionDate;
 
+    @JdbcTypeCode(Types.NUMERIC)
     @Column(name = "platform_fee")
     private Double platformFee;
 
+    @JdbcTypeCode(Types.NUMERIC)
     @Column(name = "worker_amount")
     private Double workerAmount;
 

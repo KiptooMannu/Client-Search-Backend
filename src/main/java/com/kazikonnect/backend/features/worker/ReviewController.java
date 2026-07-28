@@ -3,7 +3,7 @@ package com.kazikonnect.backend.features.worker;
 import com.kazikonnect.backend.features.auth.User;
 import com.kazikonnect.backend.features.auth.UserRepository;
 import com.kazikonnect.backend.features.common.Notification;
-import com.kazikonnect.backend.features.common.NotificationRepository;
+import com.kazikonnect.backend.features.common.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -26,7 +26,7 @@ public class ReviewController {
     private final UserRepository userRepository;
     private final WorkerProfileRepository workerProfileRepository;
     private final JobRequestRepository jobRequestRepository;
-    private final NotificationRepository notificationRepository;
+    private final NotificationService notificationService;
 
     // CREATE: Client leaves a review for a worker
     @PostMapping
@@ -72,7 +72,7 @@ public class ReviewController {
                 .message("A client left you a " + review.getRating() + "-star review and the project has been finalized.")
                 .type("SUCCESS")
                 .build();
-        notificationRepository.save(notification);
+        notificationService.dispatch(notification);
 
         return ResponseEntity.ok(ReviewDTO.from(saved));
     }

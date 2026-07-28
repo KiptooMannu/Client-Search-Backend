@@ -19,4 +19,7 @@ public interface JobRequestRepository extends JpaRepository<JobRequest, UUID> {
     List<JobRequest> findExpiredJobs(@Param("expiryThreshold") LocalDateTime expiryThreshold);
 
     List<JobRequest> findAllByCreatedAtBetween(LocalDateTime startDate, LocalDateTime endDate);
+
+    @Query("SELECT COUNT(j) FROM JobRequest j WHERE j.worker.id = :workerId AND j.status = com.kazikonnect.backend.features.worker.JobStatus.COMPLETED")
+    long countCompletedJobsByWorkerId(@Param("workerId") UUID workerId);
 }
