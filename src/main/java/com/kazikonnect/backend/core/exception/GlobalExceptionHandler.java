@@ -73,6 +73,60 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Authorization failures are 403, not 400.
+     *
+     * Without this, AccessDeniedException fell through to the RuntimeException
+     * catch-all below and was reported as a Bad Request — so a caller could not
+     * tell "you may not read this" from "your request was malformed".
+     */
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity<?> handleAccessDenied(
+            org.springframework.security.access.AccessDeniedException ex) {
+        log.warn("Access denied: {}", ex.getMessage());
+        return buildErrorResponse(
+            HttpStatus.FORBIDDEN,
+            "Forbidden",
+            ex.getMessage() != null && !ex.getMessage().isBlank()
+                ? ex.getMessage()
+                : "You do not have permission to perform this action."
+        );
+    }
+
+    /**
+     * Data-access failures are server faults, and their messages must not reach
+     * the client.
+     *
+     * A missing table or a bad column previously arrived at the RuntimeException
+     * catch-all, which returned 400 with the exception message as the body — so
+     * the browser received the full failing SQL statement, the schema of the
+     * table involved, and a Hibernate stack trace. That is both the wrong status
+     * code and an information leak. The detail is logged instead.
+     */
+    @ExceptionHandler(org.springframework.dao.DataAccessException.class)
+    public ResponseEntity<?> handleDataAccess(org.springframework.dao.DataAccessException ex) {
+        log.error("Data access failure", ex);
+        return buildErrorResponse(
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            "Error",
+            "A database error occurred while processing your request. Please try again later."
+        );
+    }
+
+    /**
+     * Touching a lazy association on a detached entity is a server-side bug, not
+     * a bad request. Reported as 500 so it is visible as such in monitoring.
+     */
+    @ExceptionHandler(org.hibernate.LazyInitializationException.class)
+    public ResponseEntity<?> handleLazyInitialization(org.hibernate.LazyInitializationException ex) {
+        log.error("Lazy association accessed outside a session", ex);
+        return buildErrorResponse(
+            HttpStatus.INTERNAL_SERVER_ERROR,
+            "Error",
+            "An unexpected error occurred. Please try again later."
+        );
+    }
+
+    /**
      * Handles RuntimeException - general errors.
      * Business/runtime failures with a message are surfaced to the client.
      */

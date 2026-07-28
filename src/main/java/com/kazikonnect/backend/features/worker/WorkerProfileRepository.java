@@ -17,6 +17,15 @@ public interface WorkerProfileRepository extends JpaRepository<WorkerProfile, UU
     boolean existsByUser(User user);
     void deleteByUserId(UUID userId);
 
+    /**
+     * Ownership check that does not touch a lazy association.
+     *
+     * The authenticated {@code User} handed to a controller comes from the JWT
+     * filter and is detached, so {@code actor.getWorkerProfile()} throws
+     * LazyInitializationException. Asking the database directly avoids that.
+     */
+    boolean existsByIdAndUserId(UUID id, UUID userId);
+
     // OPTIMIZED Marketplace search 
     @Query("SELECT DISTINCT w FROM WorkerProfile w " +
            "LEFT JOIN FETCH w.user u " +

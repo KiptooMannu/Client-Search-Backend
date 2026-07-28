@@ -14,6 +14,7 @@ import java.security.Principal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/analytics")
@@ -23,6 +24,7 @@ public class AnalyticsController {
 
     private final AnalyticsService analyticsService;
     private final EnterpriseAnalyticsService enterpriseAnalyticsService;
+    private final com.kazikonnect.backend.features.worker.WorkerProfileRepository workerProfileRepository;
 
     /**
      * Everything the enterprise dashboard renders — all KPIs and every chart series —
@@ -102,8 +104,18 @@ public class AnalyticsController {
         // A worker's earnings are keyed by their WorkerProfile id, so compare against that.
         User actor = resolveActor(principal);
         if (actor.getRole() != UserRole.ADMIN) {
-            WorkerProfile profile = actor.getWorkerProfile();
-            if (profile == null || !profile.getId().toString().equalsIgnoreCase(workerId)) {
+            // Asked of the database rather than read off `actor.getWorkerProfile()`.
+            // The actor is the detached User from the JWT filter, so walking that
+            // lazy association threw LazyInitializationException — which the global
+            // handler reported to the browser as a 400, making every worker's own
+            // earnings request look like a malformed one.
+            UUID profileId;
+            try {
+                profileId = UUID.fromString(workerId);
+            } catch (IllegalArgumentException ex) {
+                throw new AccessDeniedException("You may only view your own earnings.");
+            }
+            if (!workerProfileRepository.existsByIdAndUserId(profileId, actor.getId())) {
                 throw new AccessDeniedException("You may only view your own earnings.");
             }
         }
