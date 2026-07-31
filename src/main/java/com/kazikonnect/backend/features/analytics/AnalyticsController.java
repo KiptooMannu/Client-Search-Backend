@@ -1,6 +1,7 @@
 package com.kazikonnect.backend.features.analytics;
 
 import com.kazikonnect.backend.features.auth.User;
+import com.kazikonnect.backend.features.auth.UserRepository;
 import com.kazikonnect.backend.features.auth.UserRole;
 import com.kazikonnect.backend.features.worker.WorkerProfile;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +26,7 @@ public class AnalyticsController {
     private final AnalyticsService analyticsService;
     private final EnterpriseAnalyticsService enterpriseAnalyticsService;
     private final com.kazikonnect.backend.features.worker.WorkerProfileRepository workerProfileRepository;
+    private final UserRepository userRepository;
 
     /**
      * Everything the enterprise dashboard renders — all KPIs and every chart series —
@@ -104,11 +106,6 @@ public class AnalyticsController {
         // A worker's earnings are keyed by their WorkerProfile id, so compare against that.
         User actor = resolveActor(principal);
         if (actor.getRole() != UserRole.ADMIN) {
-            // Asked of the database rather than read off `actor.getWorkerProfile()`.
-            // The actor is the detached User from the JWT filter, so walking that
-            // lazy association threw LazyInitializationException — which the global
-            // handler reported to the browser as a 400, making every worker's own
-            // earnings request look like a malformed one.
             UUID profileId;
             try {
                 profileId = UUID.fromString(workerId);
@@ -138,6 +135,13 @@ public class AnalyticsController {
                 && auth.getPrincipal() instanceof User user) {
             return user;
         }
+
+        if (principal instanceof org.springframework.security.core.Authentication auth
+                && auth.getPrincipal() instanceof String username) {
+            return userRepository.findByUsername(username)
+                    .orElseThrow(() -> new AccessDeniedException("Unable to resolve the authenticated user."));
+        }
+
         throw new AccessDeniedException("Unable to resolve the authenticated user.");
     }
 }
