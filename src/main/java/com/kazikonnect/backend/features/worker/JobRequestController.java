@@ -737,8 +737,9 @@ public class JobRequestController {
 
             Map<String, String> requestPayload = payload == null ? java.util.Collections.emptyMap() : payload;
 
-            // Can only cancel if job is in ACCEPTED or AWAITING_FUNDING status
-            if (job.getStatus() != JobStatus.ACCEPTED && job.getStatus() != JobStatus.AWAITING_FUNDING) {
+            // Can only cancel if job is pending/awaiting funding before escrow is funded
+            if (job.getStatus() != JobStatus.PENDING && job.getStatus() != JobStatus.PENDING_APPLICATION
+                    && job.getStatus() != JobStatus.ACCEPTED && job.getStatus() != JobStatus.AWAITING_FUNDING) {
                 return ResponseEntity.badRequest().body("Job can only be cancelled before funding.");
             }
 
@@ -788,8 +789,9 @@ public class JobRequestController {
 
             Map<String, String> requestPayload = payload == null ? java.util.Collections.emptyMap() : payload;
 
-            // Can only withdraw if job is in ACCEPTED or AWAITING_FUNDING status
-            if (job.getStatus() != JobStatus.ACCEPTED && job.getStatus() != JobStatus.AWAITING_FUNDING) {
+            // Can only cancel if job is pending or awaiting funding before escrow is funded
+            if (job.getStatus() != JobStatus.PENDING && job.getStatus() != JobStatus.PENDING_APPLICATION
+                    && job.getStatus() != JobStatus.ACCEPTED && job.getStatus() != JobStatus.AWAITING_FUNDING) {
                 return ResponseEntity.badRequest().body("Acceptance can only be withdrawn before funding.");
             }
 
