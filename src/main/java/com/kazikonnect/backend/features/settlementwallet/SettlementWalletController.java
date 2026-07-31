@@ -24,7 +24,10 @@ public class SettlementWalletController {
 
     @GetMapping("/summary")
     public ResponseEntity<SettlementWalletSummaryDTO> getWalletSummary(Principal principal) {
-        User user = (User) ((org.springframework.security.core.Authentication) principal).getPrincipal();
+        User user = getAuthenticatedUser(principal);
+        if (user == null) {
+            return ResponseEntity.status(401).build();
+        }
         SettlementWalletSummaryDTO summary = settlementWalletService.getWalletSummary(user);
         return ResponseEntity.ok(summary);
     }
@@ -34,7 +37,10 @@ public class SettlementWalletController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             Principal principal) {
-        User user = (User) ((org.springframework.security.core.Authentication) principal).getPrincipal();
+        User user = getAuthenticatedUser(principal);
+        if (user == null) {
+            return ResponseEntity.status(401).build();
+        }
         List<SettlementWalletTransaction> transactions = settlementWalletService.getTransactions(user, page, size);
         return ResponseEntity.ok(transactions);
     }
@@ -44,7 +50,10 @@ public class SettlementWalletController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             Principal principal) {
-        User user = (User) ((org.springframework.security.core.Authentication) principal).getPrincipal();
+        User user = getAuthenticatedUser(principal);
+        if (user == null) {
+            return ResponseEntity.status(401).build();
+        }
         List<SettlementWithdrawal> withdrawals = settlementWalletService.getWithdrawals(user, page, size);
         return ResponseEntity.ok(withdrawals);
     }
@@ -53,8 +62,11 @@ public class SettlementWalletController {
     public ResponseEntity<Map<String, Object>> initiateWithdrawal(
             @RequestBody WithdrawalRequest request,
             Principal principal) {
-        User user = (User) ((org.springframework.security.core.Authentication) principal).getPrincipal();
-        
+        User user = getAuthenticatedUser(principal);
+        if (user == null) {
+            return ResponseEntity.status(401).build();
+        }
+
         SettlementWithdrawal withdrawal = settlementWalletService.initiateWithdrawal(
                 user,
                 request.getAmount(),
@@ -66,7 +78,7 @@ public class SettlementWalletController {
                 request.getBankBranch(),
                 request.getNotes()
         );
-        
+
         return ResponseEntity.ok(Map.of(
                 "status", "WITHDRAWAL_INITIATED",
                 "withdrawalId", withdrawal.getId(),
@@ -80,9 +92,12 @@ public class SettlementWalletController {
     public ResponseEntity<Map<String, Object>> cancelWithdrawal(
             @PathVariable UUID withdrawalId,
             Principal principal) {
-        User user = (User) ((org.springframework.security.core.Authentication) principal).getPrincipal();
+        User user = getAuthenticatedUser(principal);
+        if (user == null) {
+            return ResponseEntity.status(401).build();
+        }
         settlementWalletService.cancelWithdrawal(withdrawalId, user);
-        
+
         return ResponseEntity.ok(Map.of(
                 "status", "WITHDRAWAL_CANCELLED",
                 "withdrawalId", withdrawalId
@@ -91,7 +106,10 @@ public class SettlementWalletController {
 
     @GetMapping("/wallet")
     public ResponseEntity<ClientSettlementWallet> getWallet(Principal principal) {
-        User user = (User) ((org.springframework.security.core.Authentication) principal).getPrincipal();
+        User user = getAuthenticatedUser(principal);
+        if (user == null) {
+            return ResponseEntity.status(401).build();
+        }
         ClientSettlementWallet wallet = settlementWalletService.getWallet(user);
         return ResponseEntity.ok(wallet);
     }
@@ -110,7 +128,10 @@ public class SettlementWalletController {
             @PathVariable UUID walletId,
             @RequestBody FreezeWalletRequest request,
             Principal principal) {
-        User admin = (User) ((org.springframework.security.core.Authentication) principal).getPrincipal();
+        User admin = getAuthenticatedUser(principal);
+        if (admin == null) {
+            return ResponseEntity.status(401).build();
+        }
         settlementWalletService.freezeWallet(walletId, request.getReason(), admin);
         
         return ResponseEntity.ok(Map.of(
@@ -124,7 +145,10 @@ public class SettlementWalletController {
     public ResponseEntity<Map<String, Object>> unfreezeWallet(
             @PathVariable UUID walletId,
             Principal principal) {
-        User admin = (User) ((org.springframework.security.core.Authentication) principal).getPrincipal();
+        User admin = getAuthenticatedUser(principal);
+        if (admin == null) {
+            return ResponseEntity.status(401).build();
+        }
         settlementWalletService.unfreezeWallet(walletId, admin);
         
         return ResponseEntity.ok(Map.of(
@@ -139,7 +163,10 @@ public class SettlementWalletController {
             @PathVariable UUID userId,
             @RequestBody AdminAdjustmentRequest request,
             Principal principal) {
-        User admin = (User) ((org.springframework.security.core.Authentication) principal).getPrincipal();
+        User admin = getAuthenticatedUser(principal);
+        if (admin == null) {
+            return ResponseEntity.status(401).build();
+        }
         User targetUser = getUserById(userId);
         settlementWalletService.adminCredit(targetUser, request.getAmount(), request.getReason(), admin);
         
@@ -156,7 +183,10 @@ public class SettlementWalletController {
             @PathVariable UUID userId,
             @RequestBody AdminAdjustmentRequest request,
             Principal principal) {
-        User admin = (User) ((org.springframework.security.core.Authentication) principal).getPrincipal();
+        User admin = getAuthenticatedUser(principal);
+        if (admin == null) {
+            return ResponseEntity.status(401).build();
+        }
         User targetUser = getUserById(userId);
         settlementWalletService.adminDebit(targetUser, request.getAmount(), request.getReason(), admin);
         
@@ -217,5 +247,12 @@ public class SettlementWalletController {
     private User getUserById(UUID userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User not found"));
+    }
+
+    private User getAuthenticatedUser(Principal principal) {
+        if (principal == null || principal.getName() == null) {
+            return null;
+        }
+        return userRepository.findByUsername(principal.getName()).orElse(null);
     }
 }
